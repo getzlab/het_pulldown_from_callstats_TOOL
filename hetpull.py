@@ -14,6 +14,7 @@ def parse_args():
 	parser = argparse.ArgumentParser(description = "Get het site coverage from MuTect 1 callstats file")
 	parser.add_argument("-c", required = True, help = "Path to callstats file", metavar = "callstats_in")
 	parser.add_argument("-s", required = True, help = "Path to GATK-formatted SNP site file", metavar = "snplist_in")
+	parser.add_argument("-r", required = True, help = "Path to reference FASTA (directory must contain FASTA index)", metavar = "ref_in")
 	parser.add_argument("-o", help = "Tumor het coverage output file", default = sys.stdout, metavar = "output_path")
 	parser.add_argument("--af_lb", help = "Lower bound on beta distribution AF interval", default = 0.4, type = float, metavar = "lowerbound")
 	parser.add_argument("--af_ub", help = "Upper bound on beta distribution AF interval", default = 0.6, type = float, metavar = "upperbound")
@@ -56,7 +57,7 @@ if __name__ == "__main__":
 	  dtype = { "chr" : str, "pos" : np.uint32, "t_refcount" : np.uint32, "t_altcount" : np.uint32, "n_refcount" : np.uint32, "n_altcount" : np.uint32 }
 	)
 	CS["chr"] = CS["chr"].replace({ "X" : "23", "Y": "24" }).astype(np.uint8)
-	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"]) 
+	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref = args.r)
 	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
 	CS = CS.drop(columns = ["alt", "ref"])
 	print("{} sites loaded.".format(CS.shape[0]), file = sys.stderr)
