@@ -20,8 +20,9 @@ The interval bounds (0.4, 0.6) and probability cutoff (0.7) can be overridden.
 ## Usage:
 
 ```
-hetpull.py [-h] -c callstats_in -s snplist_in [-o output_path]
-           [--af_lb lowerbound] [--af_ub upperbound] [--dens cutoff]
+usage: hetpull.py [-h] -c callstats_in -s snplist_in -r ref_in -o output_prefix 
+                  [--af_lb lowerbound] [--af_ub upperbound] [--dens cutoff]
+
 ```
 
 ### Required arguments
@@ -33,12 +34,13 @@ hetpull.py [-h] -c callstats_in -s snplist_in [-o output_path]
    <chr>    <pos>    <pos>    <strand>    <alt>/<ref>
    ```
    
-Note that the second `<pos>` and `<strand>` can be arbitrary values; all that matters is the number of columns.
-This is to ensure compatibility with GATK's `GetHetCoverage` tool.
+  Note that the second `<pos>` and `<strand>` can be arbitrary values; all that matters is the number of columns.
+  This is to ensure compatibility with GATK's `GetHetCoverage` tool.
+
+* `-o output_prefix`: Prefix of tumor/normal het site coverage. Tumor coverage will be output to `<prefix>.tumor.tsv`, normal coverage to `<prefix>.normal.tsv`.
 
 ### Optional arguments
 
-* `-o output_path`: Path to coverage output. Will default to `stdout` if not specified.
 * `--af_lb lowerbound`: Lower bound on beta distribution interval (default 0.4)
 * `--af_ub upperbound`: Upper bound on beta distribution interval (default 0.6)
 * `--dens cutoff`: Probability cutoff (default 0.7)
