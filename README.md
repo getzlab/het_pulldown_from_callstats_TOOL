@@ -1,4 +1,4 @@
-# Method: het pulldown from callstats
+# Tool: het pulldown from callstats
 
 Call normal het sites and get their tumor coverage from a MuTect callstats file.
 
