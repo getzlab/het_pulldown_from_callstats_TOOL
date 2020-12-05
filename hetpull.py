@@ -16,6 +16,7 @@ def parse_args():
 	parser.add_argument("-s", required = True, help = "Path to GATK-formatted SNP site file", metavar = "snplist_in")
 	parser.add_argument("-r", required = True, help = "Path to reference FASTA (directory must contain FASTA index)", metavar = "ref_in")
 	parser.add_argument("-o", required = True, help = "Het coverage file prefix ('tumor'/'normal' appended)", metavar = "output_prefix")
+	parser.add_argument("-g", help = "Output genotype file", action = "store_true")
 	parser.add_argument("--af_lb", help = "Lower bound on beta distribution AF interval", default = 0.4, type = float, metavar = "lowerbound")
 	parser.add_argument("--af_ub", help = "Upper bound on beta distribution AF interval", default = 0.6, type = float, metavar = "upperbound")
 	parser.add_argument("--dens", help = "Beta distribution density threshold to consider a site heterozygous in the normal.", default = 0.7, type = float, metavar = "cutoff")
@@ -83,6 +84,9 @@ if __name__ == "__main__":
 	H["bdens"] = s.beta.cdf(args.af_ub, H["n_altcount"].values[:, None] + 1, H["n_refcount"].values[:, None] + 1) - \
 	s.beta.cdf(args.af_lb, H["n_altcount"].values[:, None] + 1, H["n_refcount"].values[:, None] + 1)
 
+	# compute which sites are confidently homozygous alt. in the normal
+	H["bdens_hom"] = 1 - s.beta.cdf(0.95, H["n_altcount"].values[:, None] + 1, H["n_refcount"].values[:, None] + 1)
+
 	# save tumor het coverage at good sites to file (GATK GetHetCoverage format)
 	good_idx = H["bdens"] > args.dens
 	print("Identified {} high quality het sites in normal.".format(good_idx.sum()), file = sys.stderr)
@@ -90,3 +94,18 @@ if __name__ == "__main__":
 
 	# save normal het coverage at good sites to file
 	H.loc[good_idx, ["chr", "pos", "n_refcount", "n_altcount"]].rename(columns = { "chr" : "CONTIG", "pos" : "POSITION", "n_refcount" : "REF_COUNT", "n_altcount" : "ALT_COUNT" }).to_csv(args.o + ".normal.tsv", sep = "\t", index = False)
+
+	# if requested, save genotype file as TSV (23andme style) 
+	if args.g:
+		het_idx = good_idx
+		hom_idx = H["bdens_hom"] > args.dens
+		gen_idx = het_idx | hom_idx
+		G = H.loc[gen_idx, ["chr", "pos", "allele"]]
+
+		# add genotype info
+		alt_ref = np.array(["A", "C", "G", "T"])[np.c_[(G["allele"].values & 0xC) >> 2, G["allele"].values & 3]]
+		alt_ref[hom_idx[gen_idx], 1] = alt_ref[hom_idx[gen_idx], 0] 
+		G["genotype"] = np.char.add(alt_ref[:, -1], alt_ref[:, 0])
+
+		# save
+		G.drop(columns = ["allele"]).to_csv(args.o + ".genotype.tsv", sep = "\t", index = False)
