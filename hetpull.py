@@ -39,9 +39,9 @@ def parse_args():
 	if not os.path.exists(args.s):
 		raise FileNotFoundError("SNP site file not found!")
 	if not os.path.exists(args.r):
-		raise FileNotFoundError("referencce fasta file not found!")
+		raise FileNotFoundError("Reference fasta file not found!")
 	if not os.path.exists(args.r + '.fai'):
-		raise FileNotFoundError("referencce fasta index file not found!")
+		raise FileNotFoundError("Reference fasta index file not found!")
 
 	return args
 
