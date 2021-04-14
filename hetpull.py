@@ -38,6 +38,10 @@ def parse_args():
 		raise FileNotFoundError("Callstats file not found!")
 	if not os.path.exists(args.s):
 		raise FileNotFoundError("SNP site file not found!")
+	if not os.path.exists(args.r):
+		raise FileNotFoundError("Reference fasta file not found!")
+	if not os.path.exists(args.r + '.fai'):
+		raise FileNotFoundError("Reference fasta index file not found! (Must be <reference.fa>.fai)")
 
 	return args
 
@@ -57,7 +61,8 @@ if __name__ == "__main__":
 	  names = ["chr", "pos", "ref", "alt", "t_refcount", "t_altcount", "n_refcount", "n_altcount"],
 	  dtype = { "chr" : str, "pos" : np.uint32, "t_refcount" : np.uint32, "t_altcount" : np.uint32, "n_refcount" : np.uint32, "n_altcount" : np.uint32 }
 	)
-	CS["chr"] = CS["chr"].replace({ "X" : "23", "Y": "24" }).astype(np.uint8)
+	contig_list = pd.read_csv(args.r + '.fai', sep='\t', usecols = [0], names=["contig"])["contig"].tolist()
+	CS["chr"] = CS["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
 	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref = args.r)
 	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
 	CS = CS.drop(columns = ["alt", "ref"])
@@ -69,8 +74,8 @@ if __name__ == "__main__":
 	  names = ["chr", "pos", "x", "y", "allele"],
 	  dtype = { "chr" : str, "pos" : np.uint32, "x" : np.uint32, "y" : str, "allele" : str },
 	).drop(columns = ["x", "y"])
-	H["chr"] = H["chr"].replace({ "X" : "23", "Y": "24" }).astype(np.uint8)
-	H["gpos"] = seq.chrpos2gpos(H["chr"], H["pos"]) 
+	H["chr"] = H["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
+	H["gpos"] = seq.chrpos2gpos(H["chr"], H["pos"], ref = args.r) 
 	H["allele"] = hash_altref(H["allele"].str.extract(r"(.)/(.)"))
 	print("{} sites loaded.".format(H.shape[0]), file = sys.stderr)
 
