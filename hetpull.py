@@ -41,7 +41,7 @@ def parse_args():
 	if not os.path.exists(args.r):
 		raise FileNotFoundError("Reference fasta file not found!")
 	if not os.path.exists(args.r + '.fai'):
-		raise FileNotFoundError("Reference fasta index file not found!")
+		raise FileNotFoundError("Reference fasta index file not found! (Must be <reference.fa>.fai)")
 
 	return args
 
