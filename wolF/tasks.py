@@ -79,9 +79,10 @@ EOF
         },
         outputs = {
             "tumor_hets" : "het_coverage.tumor.tsv",
-            "normal_hets" : "het_coverage.normal.tsv"
+            "normal_hets" : "het_coverage.normal.tsv",
+            "normal_genotype" : "het_coverage.genotype.tsv"
         },
-        script = "hetpull.py -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff}",
+        script = "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff}",
         resources = { "mem" : "4G" },
         docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v15"
     )
