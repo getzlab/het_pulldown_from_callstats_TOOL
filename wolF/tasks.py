@@ -63,7 +63,7 @@ EOF
 
     # use user-specified value
     else:
-        if cutoff > 1 or cutoff < 0:
+        if dens_cutoff > 1 or dens_cutoff < 0:
             raise ValueError("Density cutoff must be between 0 and 1!")
         cutoff = dens_cutoff
 
