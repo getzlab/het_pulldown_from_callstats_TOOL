@@ -53,7 +53,7 @@ print(0.9*(1 - np.diff(s.beta.cdf(np.r_[0.05, 0.4, 0.6, 0.95], cov/2 + 1, cov/2 
 EOF
 """,
           outputs = {
-            "cutoff" : ("cutoff.txt", wolf.output_helpers.read_file)
+            "cutoff" : ("cutoff.txt", wolf.read_file)
           },
           docker = "gcr.io/broad-getzlab-workflows/base_image:v0.0.5"
         )["cutoff"]
