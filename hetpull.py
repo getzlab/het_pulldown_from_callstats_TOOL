@@ -112,5 +112,10 @@ if __name__ == "__main__":
 		alt_ref[hom_idx[gen_idx], 1] = alt_ref[hom_idx[gen_idx], 0] 
 		G["genotype"] = np.char.add(alt_ref[:, -1], alt_ref[:, 0])
 
+		# restore original contig names
+		# XXX: we should probably do this for the coverage files -- how is our
+		#      pipeline OK with not doing this?
+		G["chr"] = G["chr"].apply(lambda x: contig_list[x - 1])
+
 		# save
 		G.drop(columns = ["allele"]).to_csv(args.o + ".genotype.tsv", sep = "\t", index = False)
