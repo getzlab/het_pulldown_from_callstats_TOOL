@@ -44,3 +44,4 @@ usage: hetpull.py [-h] -c callstats_in -s snplist_in -r ref_in -o output_prefix
 * `--af_lb lowerbound`: Lower bound on beta distribution interval (default 0.4)
 * `--af_ub upperbound`: Upper bound on beta distribution interval (default 0.6)
 * `--dens cutoff`: Probability cutoff (default 0.7)
+* `--max_frac_mapq0`: Exclude all positions with more than this percentage of MAPQ0 alignments (default 0.05)
