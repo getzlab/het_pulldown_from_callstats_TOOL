@@ -8,7 +8,7 @@ def get_het_coverage_from_callstats(
   ref_fasta_idx,
   ref_fasta_dict,
   dens_cutoff = None, # if None, automatically infer
-  max_frac_mapq0 = 0.05
+  max_frac_mapq0 = 0.05,
   normal_bam = None,
   normal_bai = None,
 ):
