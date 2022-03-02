@@ -8,6 +8,7 @@ def get_het_coverage_from_callstats(
   ref_fasta_idx,
   ref_fasta_dict,
   dens_cutoff = None, # if None, automatically infer
+  max_frac_mapq0 = 0.05
   normal_bam = None,
   normal_bai = None,
 ):
@@ -76,14 +77,15 @@ EOF
             "ref_fasta" : ref_fasta,
             "ref_fasta_idx" : ref_fasta_idx,
             "ref_fasta_dict" : ref_fasta_dict,
-            "beta_dens_cutoff" : cutoff
+            "beta_dens_cutoff" : cutoff,
+            "max_frac_mapq0" : max_frac_mapq0
         },
         outputs = {
             "tumor_hets" : "het_coverage.tumor.tsv",
             "normal_hets" : "het_coverage.normal.tsv",
             "normal_genotype" : "het_coverage.genotype.tsv"
         },
-        script = "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff}",
+        script = "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0}",
         resources = { "mem" : "4G" },
         docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v26"
     )
