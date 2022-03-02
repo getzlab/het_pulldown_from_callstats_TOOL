@@ -20,6 +20,7 @@ def parse_args():
 	parser.add_argument("--af_lb", help = "Lower bound on beta distribution AF interval", default = 0.4, type = float, metavar = "lowerbound")
 	parser.add_argument("--af_ub", help = "Upper bound on beta distribution AF interval", default = 0.6, type = float, metavar = "upperbound")
 	parser.add_argument("--dens", help = "Beta distribution density threshold to consider a site heterozygous in the normal.", default = 0.7, type = float, metavar = "cutoff")
+	parser.add_argument("--max_frac_mapq0", help = "Any position from callstats with more than this percentage of MAPQ0 reads will be excluded from het coverage analysis.", default = 0.05, type = float, metavar = "mapq0_frac")
 
 	args = parser.parse_args()
 
@@ -33,6 +34,8 @@ def parse_args():
 		raise ValueError("AF upper bound must be between 0 and 1!")
 	if args.af_ub <= args.af_lb:
 		raise ValueError("AF lower bound must be less than or equal to upper bound!")
+	if not 0 <= args.max_frac_mapq0 <= 1:
+		raise ValueError("Max fraction of reads with MAPQ0 at a given position must be between 0 and 1!")
 
 	if not os.path.exists(args.c):
 		raise FileNotFoundError("Callstats file not found!")
@@ -53,19 +56,22 @@ if __name__ == "__main__":
 	args = parse_args()
 
 	# trim callstats (faster to do this on the shell)
-	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,26,27,38,39".format(args.c), shell = True, stdout = subprocess.PIPE)
+	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(args.c), shell = True, stdout = subprocess.PIPE)
 
 	# load in callstats
 	print("Loading callstats file ...", file = sys.stderr)
 	CS = pd.read_csv(callstats_trimmed.stdout, sep = "\t",
-	  names = ["chr", "pos", "ref", "alt", "t_refcount", "t_altcount", "n_refcount", "n_altcount"],
-	  dtype = { "chr" : str, "pos" : np.uint32, "t_refcount" : np.uint32, "t_altcount" : np.uint32, "n_refcount" : np.uint32, "n_altcount" : np.uint32 }
+	  names = ["chr", "pos", "ref", "alt", "total_reads", "mapq0_reads", "t_refcount", "t_altcount", "n_refcount", "n_altcount"],
+          dtype = { "chr" : str, "pos" : np.uint32, "total_reads" : np.uint32, "mapq0_reads" : np.uint32, "t_refcount" : np.uint32, "t_altcount" : np.uint32, "n_refcount" : np.uint32, "n_altcount" : np.uint32 }
 	)
 	contig_list = pd.read_csv(args.r + '.fai', sep='\t', usecols = [0], names=["contig"])["contig"].tolist()
 	CS["chr"] = CS["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
 	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref = args.r)
 	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
 	CS = CS.drop(columns = ["alt", "ref"])
+	CS["frac_mapq0"] = CS["mapq0_reads"]/CS["total_reads"] # M1 doesnt report sites with cov=0 (to be confirmed?)
+	CS = CS.loc[CS["frac_mapq0"]<=args.max_frac_mapq0]
+	CS = CS.drop(columns = ["mapq0_reads", "total_reads", "frac_mapq0"])
 	print("{} sites loaded.".format(CS.shape[0]), file = sys.stderr)
 
 	# load in SNP list
