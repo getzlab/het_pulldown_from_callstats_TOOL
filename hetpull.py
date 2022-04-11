@@ -21,6 +21,7 @@ def parse_args():
 	parser.add_argument("--af_ub", help = "Upper bound on beta distribution AF interval", default = 0.6, type = float, metavar = "upperbound")
 	parser.add_argument("--dens", help = "Beta distribution density threshold to consider a site heterozygous in the normal.", default = 0.7, type = float, metavar = "cutoff")
 	parser.add_argument("--max_frac_mapq0", help = "Any position from callstats with more than this percentage of MAPQ0 reads will be excluded from het coverage analysis.", default = 0.05, type = float, metavar = "mapq0_frac")
+	parser.add_argument("--max_frac_prefiltered", help = "Any site with more than this fraction of total reads prefiltered by MuTect will be excluded.", default = 0.10, type = float, metavar = "prefiltered_frac")
 
 	args = parser.parse_args()
 
@@ -36,6 +37,8 @@ def parse_args():
 		raise ValueError("AF lower bound must be less than or equal to upper bound!")
 	if not 0 <= args.max_frac_mapq0 <= 1:
 		raise ValueError("Max fraction of reads with MAPQ0 at a given position must be between 0 and 1!")
+	if not 0 <= args.max_frac_prefiltered <= 1:
+		raise ValueError("Max fraction of prefiltered reads must be between 0 and 1!")
 
 	if not os.path.exists(args.c):
 		raise FileNotFoundError("Callstats file not found!")
@@ -69,9 +72,26 @@ if __name__ == "__main__":
 	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref = args.r)
 	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
 	CS = CS.drop(columns = ["alt", "ref"])
-	CS["frac_mapq0"] = CS["mapq0_reads"]/CS["total_reads"] # M1 doesnt report sites with cov=0 (to be confirmed?)
-	CS = CS.loc[CS["frac_mapq0"]<=args.max_frac_mapq0]
-	CS = CS.drop(columns = ["mapq0_reads", "total_reads", "frac_mapq0"])
+
+	## prefilter poor quality sites
+
+	# 1. excess fraction of MAPQ0 reads at pileup
+	frac_mapq0 = CS["mapq0_reads"]/CS["total_reads"] # M1 doesnt report sites with cov=0 (to be confirmed?)
+	mapq_pass_idx = frac_mapq0 <= args.max_frac_mapq0
+	print("{} sites with >{}% of MAPQ0 reads will be dropped.".format(len(CS) - mapq_pass_idx.sum(), args.max_frac_mapq0*100), file = sys.stderr)
+
+	# 2. excess fraction of tumor reads pre-filtered by MuTect
+	tumor_total_reads = CS["total_reads"] - CS.loc[:, ["n_refcount", "n_altcount"]].sum(1)
+	frac_prefiltered = 1 - CS.loc[:, ["t_refcount", "t_altcount"]].sum(1)/tumor_total_reads
+	prefilter_pass_idx = frac_prefiltered <= args.max_frac_prefiltered
+	print("{} sites with >{}% of prefiltered reads will be dropped.".format(len(CS) - prefilter_pass_idx.sum(), args.max_frac_prefiltered*100), file = sys.stderr)
+	print("{} total sites will be dropped.".format(len(CS) - (mapq_pass_idx & prefilter_pass_idx).sum()), file = sys.stderr)
+
+	# print(CS.loc[~prefilter_pass_idx].head(50), file = sys.stderr)
+
+	CS = CS.loc[mapq_pass_idx & prefilter_pass_idx]
+
+	CS = CS.drop(columns = ["mapq0_reads", "total_reads"])
 	print("{} sites loaded.".format(CS.shape[0]), file = sys.stderr)
 
 	# load in SNP list
