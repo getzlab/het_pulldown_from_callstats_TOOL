@@ -87,5 +87,5 @@ EOF
         },
         script = "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0}",
         resources = { "mem" : "4G" },
-        docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v26"
+        docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v31"
     )
