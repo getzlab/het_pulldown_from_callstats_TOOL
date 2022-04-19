@@ -17,9 +17,14 @@ def parse_args():
 	parser.add_argument("-r", required = True, help = "Path to reference FASTA (directory must contain FASTA index)", metavar = "ref_in")
 	parser.add_argument("-o", required = True, help = "Het coverage file prefix ('tumor'/'normal' appended)", metavar = "output_prefix")
 	parser.add_argument("-g", help = "Output genotype file", action = "store_true")
+
+	parser.add_argument("--use_pod_genotyper", help = "Use posterior odds method for genotyping", action = "store_true")
+	parser.add_argument("--log_pod_threshold", type = float, default = 2.15)
+
 	parser.add_argument("--af_lb", help = "Lower bound on beta distribution AF interval", default = 0.4, type = float, metavar = "lowerbound")
 	parser.add_argument("--af_ub", help = "Upper bound on beta distribution AF interval", default = 0.6, type = float, metavar = "upperbound")
 	parser.add_argument("--dens", help = "Beta distribution density threshold to consider a site heterozygous in the normal.", default = 0.7, type = float, metavar = "cutoff")
+
 	parser.add_argument("--max_frac_mapq0", help = "Any position from callstats with more than this percentage of MAPQ0 reads will be excluded from het coverage analysis.", default = 0.05, type = float, metavar = "mapq0_frac")
 	parser.add_argument("--max_frac_prefiltered", help = "Any site with more than this fraction of total reads prefiltered by MuTect will be excluded.", default = 0.10, type = float, metavar = "prefiltered_frac")
 
@@ -28,13 +33,16 @@ def parse_args():
 	# check args
 	if not 0 < args.dens < 1:
 		raise ValueError("Density threshold must be between 0 and 1!")
-
 	if not 0 < args.af_lb < 1:
 		raise ValueError("AF lower bound must be between 0 and 1!")
 	if not 0 < args.af_ub < 1:
 		raise ValueError("AF upper bound must be between 0 and 1!")
 	if args.af_ub <= args.af_lb:
 		raise ValueError("AF lower bound must be less than or equal to upper bound!")
+
+	if not args.log_pod_threshold > 0:
+		raise ValueError("Posterior odds threshold must be >0!")
+
 	if not 0 <= args.max_frac_mapq0 <= 1:
 		raise ValueError("Max fraction of reads with MAPQ0 at a given position must be between 0 and 1!")
 	if not 0 <= args.max_frac_prefiltered <= 1:
@@ -111,15 +119,21 @@ if __name__ == "__main__":
 	print("{} covered SNP sites identified.".format(H.shape[0]), file = sys.stderr)
 
 	# compute which sites in the SNP list are confidently heterozygous in the normal
+	A = H["n_altcount"].values[:, None]
+	B = H["n_refcount"].values[:, None]
 	# bdens = \int_{af_lb}^{af_ub} df beta(f | n_alt + 1, n_ref + 1)
-	H["bdens"] = s.beta.cdf(args.af_ub, H["n_altcount"].values[:, None] + 1, H["n_refcount"].values[:, None] + 1) - \
-	s.beta.cdf(args.af_lb, H["n_altcount"].values[:, None] + 1, H["n_refcount"].values[:, None] + 1)
+	H["bdens"] = s.beta.cdf(args.af_ub, A + 1, B + 1) - s.beta.cdf(args.af_lb, A + 1, B + 1)
+	# log posterior ratio (alternate method of genotyping; true positive rate is stable WRT coverage)
+	H["log_pod"] = np.abs(s.beta.logsf(0.5, A + 1, B + 1) - s.beta.logcdf(0.5, A + 1, B + 1))
 
 	# compute which sites are confidently homozygous alt. in the normal
 	H["bdens_hom"] = 1 - s.beta.cdf(0.95, H["n_altcount"].values[:, None] + 1, H["n_refcount"].values[:, None] + 1)
 
 	# save tumor het coverage at good sites to file (GATK GetHetCoverage format)
-	good_idx = H["bdens"] > args.dens
+	if args.use_pod_genotyper:
+		good_idx = H["log_pod"] < args.log_pod_threshold
+	else:
+		good_idx = H["bdens"] > args.dens
 	print("Identified {} high quality het sites in normal.".format(good_idx.sum()), file = sys.stderr)
 	H.loc[good_idx, ["chr", "pos", "t_refcount", "t_altcount"]].rename(columns = { "chr" : "CONTIG", "pos" : "POSITION", "t_refcount" : "REF_COUNT", "t_altcount" : "ALT_COUNT" }).to_csv(args.o + ".tumor.tsv", sep = "\t", index = False)
 
