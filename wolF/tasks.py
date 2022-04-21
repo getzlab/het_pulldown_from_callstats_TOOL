@@ -9,6 +9,8 @@ def get_het_coverage_from_callstats(
   ref_fasta_dict,
   dens_cutoff = None, # if None, automatically infer
   max_frac_mapq0 = 0.05,
+  use_pod_genotyper = False,
+  log_pod_threshold = 2.5,
   normal_bam = None,
   normal_bai = None,
 ):
@@ -22,7 +24,7 @@ def get_het_coverage_from_callstats(
     """
 
     # infer density cutoff from BAM coverage
-    if dens_cutoff is None and normal_bam is not None:
+    if not use_pod_genotyper and dens_cutoff is None and normal_bam is not None:
         if normal_bai is None:
             raise ValueError("Must explicitly specify BAM index along with BAM!")
 
@@ -78,6 +80,7 @@ EOF
             "ref_fasta_idx" : ref_fasta_idx,
             "ref_fasta_dict" : ref_fasta_dict,
             "beta_dens_cutoff" : cutoff,
+            "log_pod_threshold" : log_pod_threshold,
             "max_frac_mapq0" : max_frac_mapq0
         },
         outputs = {
@@ -85,7 +88,7 @@ EOF
             "normal_hets" : "het_coverage.normal.tsv",
             "normal_genotype" : "het_coverage.genotype.tsv"
         },
-        script = "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0}",
+        script = "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0}" + " --use_pod_genotyper --log_pod_threshold ${log_pod_threshold}" if use_pod_genotyper else "",
         resources = { "mem" : "4G" },
-        docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v31"
+        docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v33"
     )
