@@ -11,6 +11,7 @@ def get_het_coverage_from_callstats(
   max_frac_mapq0 = 0.05,
   use_pod_genotyper = False,
   log_pod_threshold = 2.5,
+  pod_min_depth = 10,
   normal_bam = None,
   normal_bai = None,
 ):
@@ -88,7 +89,7 @@ EOF
             "normal_hets" : "het_coverage.normal.tsv",
             "normal_genotype" : "het_coverage.genotype.tsv"
         },
-        script = "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0}" + (" --use_pod_genotyper --log_pod_threshold ${log_pod_threshold}" if use_pod_genotyper else ""),
+        script = "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0}" + (" --use_pod_genotyper --log_pod_threshold ${log_pod_threshold} --pod_min_depth ${pod_min_depth}" if use_pod_genotyper else ""),
         resources = { "mem" : "4G" },
         docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v33"
     )

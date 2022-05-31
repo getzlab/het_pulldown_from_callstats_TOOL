@@ -20,6 +20,7 @@ def parse_args():
 
 	parser.add_argument("--use_pod_genotyper", help = "Use posterior odds method for genotyping", action = "store_true")
 	parser.add_argument("--log_pod_threshold", type = float, default = 2.15)
+	parser.add_argument("--pod_min_depth", type = int, default = 10, help="Any position with total coverage below this threshold will not be considered for genotyping")
 
 	parser.add_argument("--af_lb", help = "Lower bound on beta distribution AF interval", default = 0.4, type = float, metavar = "lowerbound")
 	parser.add_argument("--af_ub", help = "Upper bound on beta distribution AF interval", default = 0.6, type = float, metavar = "upperbound")
@@ -131,7 +132,7 @@ if __name__ == "__main__":
 
 	# save tumor het coverage at good sites to file (GATK GetHetCoverage format)
 	if args.use_pod_genotyper:
-		good_idx = H["log_pod"] < args.log_pod_threshold
+		good_idx = H["log_pod"] < args.log_pod_threshold and H["n_altcount"]+H["n_refcount"] >= args.pod_min_depth
 	else:
 		good_idx = H["bdens"] > args.dens
 	print("Identified {} high quality het sites in normal.".format(good_idx.sum()), file = sys.stderr)
