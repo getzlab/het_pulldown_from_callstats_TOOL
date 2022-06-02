@@ -92,5 +92,5 @@ EOF
         },
         script = "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0}" + (" --use_pod_genotyper --log_pod_threshold ${log_pod_threshold} --pod_min_depth ${pod_min_depth}" if use_pod_genotyper else ""),
         resources = { "mem" : "4G" },
-        docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:fix_pod_min_depth_v39"
+        docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:fix_pod_min_depth_v40"
     )

@@ -132,7 +132,7 @@ if __name__ == "__main__":
 
 	# save tumor het coverage at good sites to file (GATK GetHetCoverage format)
 	if args.use_pod_genotyper:
-		good_idx = ( H["log_pod"] < args.log_pod_threshold ) and ( H["n_altcount"]+H["n_refcount"] >= args.pod_min_depth ) 
+		good_idx = ( H["log_pod"] < args.log_pod_threshold ) & ( H["n_altcount"]+H["n_refcount"] >= args.pod_min_depth ) 
 	else:
 		good_idx = H["bdens"] > args.dens
 	print("Identified {} high quality het sites in normal.".format(good_idx.sum()), file = sys.stderr)
