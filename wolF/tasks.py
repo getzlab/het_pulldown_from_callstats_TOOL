@@ -82,6 +82,7 @@ EOF
             "ref_fasta_dict" : ref_fasta_dict,
             "beta_dens_cutoff" : cutoff,
             "log_pod_threshold" : log_pod_threshold,
+            "pod_min_depth" : pod_min_depth,
             "max_frac_mapq0" : max_frac_mapq0
         },
         outputs = {
