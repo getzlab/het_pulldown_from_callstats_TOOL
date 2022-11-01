@@ -21,6 +21,7 @@ def parse_args():
 	parser.add_argument("--af_ub", help = "Upper bound on beta distribution AF interval", default = 0.6, type = float, metavar = "upperbound")
 	parser.add_argument("--dens", help = "Beta distribution density threshold to consider a site heterozygous in the normal.", default = 0.7, type = float, metavar = "cutoff")
 	parser.add_argument("--max_frac_mapq0", help = "Any position from callstats with more than this percentage of MAPQ0 reads will be excluded from het coverage analysis.", default = 0.05, type = float, metavar = "mapq0_frac")
+	parser.add_argument("--max_mapq0", help = "Any position from callstats with (strictly) more than this number of MAPQ0 reads will be excluded from het coverage analysis. (TODO) Set to -1 to avoid.", default = 3, type = np.uint32, metavar = "mapq0_n")
 
 	args = parser.parse_args()
 
@@ -70,6 +71,7 @@ if __name__ == "__main__":
 	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
 	CS = CS.drop(columns = ["alt", "ref"])
 	CS["frac_mapq0"] = CS["mapq0_reads"]/CS["total_reads"] # M1 doesnt report sites with cov=0 (to be confirmed?)
+	CS = CS.loc[CS["mapq0_reads"]<=args.max_mapq0]
 	CS = CS.loc[CS["frac_mapq0"]<=args.max_frac_mapq0]
 	CS = CS.drop(columns = ["mapq0_reads", "total_reads", "frac_mapq0"])
 	print("{} sites loaded.".format(CS.shape[0]), file = sys.stderr)
