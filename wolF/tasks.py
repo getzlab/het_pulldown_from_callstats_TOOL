@@ -1,7 +1,49 @@
 import wolf
-from wolf import Task
 
-def get_het_coverage_from_callstats(
+class get_het_coverage_from_callstats(wolf.Task):
+    inputs = {
+        "callstats_file" : None,
+        "common_snp_list" : None,
+        "ref_fasta" : None,
+        "ref_fasta_idx" : None,
+        "ref_fasta_dict" : None,
+        "beta_dens_cutoff" : 0.7,
+        "log_pod_threshold" : "2.5",
+        "max_frac_mapq0" : "0.05",
+        "use_pod_genotyper" : True
+    }
+    def script(self):
+        return "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0}" + \
+          (" --use_pod_genotyper --log_pod_threshold ${log_pod_threshold}" if self.conf["inputs"]["use_pod_genotyper"] else "")
+    outputs = {
+        "tumor_hets" : "het_coverage.tumor.tsv",
+        "normal_hets" : "het_coverage.normal.tsv",
+        "normal_genotype" : "het_coverage.genotype.tsv"
+    }
+    resources = { "mem" : "4G" }
+    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v33"
+
+class gather_het_coverage(wolf.Task):
+    inputs = {
+      "tumor_hets",
+      "normal_hets",
+      "normal_genotype"
+    }
+    script = """
+    cat <(cat $(head -n1 ${normal_genotype}) | head -n1) \
+      <(for f in $(cat ${normal_genotype}); do sed 1d $f; done | sort -k1,1V -k2,2n) > normal_genotype.txt
+    cat <(cat $(head -n1 ${normal_hets}) | head -n1) \
+      <(for f in $(cat ${normal_hets}); do sed 1d $f; done | sort -k1,1V -k2,2n) > normal_hets.txt
+    cat <(cat $(head -n1 ${tumor_hets}) | head -n1) \
+      <(for f in $(cat ${tumor_hets}); do sed 1d $f; done | sort -k1,1V -k2,2n) > tumor_hets.txt
+    """
+    outputs = {
+      "tumor_hets" : "tumor_hets.txt",
+      "normal_hets" : "normal_hets.txt",
+      "normal_genotype" : "normal_genotype.txt",
+    }
+
+def get_het_coverage_from_callstats_legacy_workflow(
   callstats_file,
   common_snp_list,
   ref_fasta,
@@ -28,7 +70,7 @@ def get_het_coverage_from_callstats(
         if normal_bai is None:
             raise ValueError("Must explicitly specify BAM index along with BAM!")
 
-        cutoff = Task(
+        cutoff = wolf.Task(
           name = "set_het_density_cutoff",
           inputs = {
             "normal_bam" : normal_bam,
@@ -71,8 +113,7 @@ EOF
             raise ValueError("Density cutoff must be between 0 and 1!")
         cutoff = dens_cutoff
 
-    return Task(
-        name = "get_het_coverage_from_callstats",
+    return get_het_coverage_from_callstats(
         inputs = {
             "callstats_file" : callstats_file,
             "common_snp_list" : common_snp_list,
@@ -82,13 +123,5 @@ EOF
             "beta_dens_cutoff" : cutoff,
             "log_pod_threshold" : log_pod_threshold,
             "max_frac_mapq0" : max_frac_mapq0
-        },
-        outputs = {
-            "tumor_hets" : "het_coverage.tumor.tsv",
-            "normal_hets" : "het_coverage.normal.tsv",
-            "normal_genotype" : "het_coverage.genotype.tsv"
-        },
-        script = "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0}" + (" --use_pod_genotyper --log_pod_threshold ${log_pod_threshold}" if use_pod_genotyper else ""),
-        resources = { "mem" : "4G" },
-        docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v33"
+        }
     )
