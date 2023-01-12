@@ -13,14 +13,16 @@ def parse_args():
 	# parse args
 	parser = argparse.ArgumentParser(description = "Get het site coverage from MuTect 1 callstats file")
 	parser.add_argument("-c", required = True, help = "Path to callstats file", metavar = "callstats_in")
-	parser.add_argument("-s", required = True, help = "Path to GATK-formatted SNP site file", metavar = "snplist_in")
 	parser.add_argument("-r", required = True, help = "Path to reference FASTA (directory must contain FASTA index)", metavar = "ref_in")
 	parser.add_argument("-o", required = True, help = "Het coverage file prefix ('tumor'/'normal' appended)", metavar = "output_prefix")
+	parser.add_argument("-s", help="Path to GATK-formatted SNP site file", metavar="snplist_in")
 	parser.add_argument("-g", help = "Output genotype file", action = "store_true")
 
-	parser.add_argument("--use_pod_genotyper", help = "Use posterior odds method for genotyping", action = "store_true")
-	parser.add_argument("--log_pod_threshold", type = float, default = 2.15)
+	genotyper_parser = parser.add_mutually_exclusive_group(required=False)
+	genotyper_parser.add_argument("--use_pod_genotyper", dest="use_pod_genotyper",help = "Use posterior odds method for genotyping", action = "store_true")
+	genotyper_parser.add_argument("--use_beta_density", dest="use_pod_genotyper", help = "Use beta distribution density for genotyping", action = "store_false")
 
+	parser.add_argument("--log_pod_threshold", type = float, metavar='threshold', default = 2.5)
 	parser.add_argument("--af_lb", help = "Lower bound on beta distribution AF interval", default = 0.4, type = float, metavar = "lowerbound")
 	parser.add_argument("--af_ub", help = "Upper bound on beta distribution AF interval", default = 0.6, type = float, metavar = "upperbound")
 	parser.add_argument("--dens", help = "Beta distribution density threshold to consider a site heterozygous in the normal.", default = 0.7, type = float, metavar = "cutoff")
@@ -28,6 +30,7 @@ def parse_args():
 	parser.add_argument("--max_frac_mapq0", help = "Any position from callstats with more than this percentage of MAPQ0 reads will be excluded from het coverage analysis.", default = 0.05, type = float, metavar = "mapq0_frac")
 	parser.add_argument("--max_frac_prefiltered", help = "Any site with more than this fraction of total reads prefiltered by MuTect will be excluded.", default = 0.10, type = float, metavar = "prefiltered_frac")
 
+	parser.set_defaults(use_pod_genotyper=True)
 	args = parser.parse_args()
 
 	# check args
@@ -50,7 +53,9 @@ def parse_args():
 
 	if not os.path.exists(args.c):
 		raise FileNotFoundError("Callstats file not found!")
-	if not os.path.exists(args.s):
+	if args.s is None:
+		print("WARNING: without an input SNP site file, all valid het sites will be returned.", file = sys.stderr)
+	elif not os.path.exists(args.s):
 		raise FileNotFoundError("SNP site file not found!")
 	if not os.path.exists(args.r):
 		raise FileNotFoundError("Reference fasta file not found!")
@@ -103,20 +108,23 @@ if __name__ == "__main__":
 	print("{} sites loaded.".format(CS.shape[0]), file = sys.stderr)
 
 	# load in SNP list
-	print("Loading SNP list ...", file = sys.stderr)
-	H = pd.read_csv(args.s, sep = "\t", comment = "@",
-	  names = ["chr", "pos", "x", "y", "allele"],
-	  dtype = { "chr" : str, "pos" : np.uint32, "x" : np.uint32, "y" : str, "allele" : str },
-	).drop(columns = ["x", "y"])
-	H["chr"] = H["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
-	H["gpos"] = seq.chrpos2gpos(H["chr"], H["pos"], ref = args.r) 
-	H["allele"] = hash_altref(H["allele"].str.extract(r"(.)/(.)"))
-	print("{} sites loaded.".format(H.shape[0]), file = sys.stderr)
+	if args.s is not None:
+		print("Loading SNP list ...", file = sys.stderr)
+		H = pd.read_csv(args.s, sep = "\t", comment = "@",
+		  names = ["chr", "pos", "x", "y", "allele"],
+		  dtype = { "chr" : str, "pos" : np.uint32, "x" : np.uint32, "y" : str, "allele" : str },
+		).drop(columns = ["x", "y"])
+		H["chr"] = H["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
+		H["gpos"] = seq.chrpos2gpos(H["chr"], H["pos"], ref = args.r)
+		H["allele"] = hash_altref(H["allele"].str.extract(r"(.)/(.)"))
+		print("{} sites loaded.".format(H.shape[0]), file = sys.stderr)
 
-	# merge
-	print("Pulling down SNP site coverage from callstats ...", file = sys.stderr)
-	H = H.merge(CS.drop(columns = ["chr", "pos"]), left_on = ["gpos", "allele"], right_on = ["gpos", "allele"], how = "inner")
-	print("{} covered SNP sites identified.".format(H.shape[0]), file = sys.stderr)
+		# merge
+		print("Pulling down SNP site coverage from callstats ...", file = sys.stderr)
+		H = H.merge(CS.drop(columns = ["chr", "pos"]), left_on = ["gpos", "allele"], right_on = ["gpos", "allele"], how = "inner")
+		print("{} covered SNP sites identified.".format(H.shape[0]), file = sys.stderr)
+	else:
+		H = CS
 
 	# compute which sites in the SNP list are confidently heterozygous in the normal
 	A = H["n_altcount"].values[:, None]
