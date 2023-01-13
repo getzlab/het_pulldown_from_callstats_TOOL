@@ -3,25 +3,29 @@ import wolf
 class get_het_coverage_from_callstats(wolf.Task):
     inputs = {
         "callstats_file" : None,
-        "common_snp_list" : None,
         "ref_fasta" : None,
         "ref_fasta_idx" : None,
         "ref_fasta_dict" : None,
+        "common_snp_list": "",
         "beta_dens_cutoff" : 0.7,
         "log_pod_threshold" : "2.5",
         "max_frac_mapq0" : "0.05",
+        "max_frac_prefiltered" : "0.1",
         "use_pod_genotyper" : True
     }
     def script(self):
-        return "hetpull.py -g -c ${callstats_file} -s ${common_snp_list} -r ${ref_fasta} -o het_coverage --dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0}" + \
-          (" --use_pod_genotyper --log_pod_threshold ${log_pod_threshold}" if self.conf["inputs"]["use_pod_genotyper"] else "")
+        return "hetpull.py -g -c ${callstats_file} -r ${ref_fasta} -o het_coverage " \
+               "--dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0} " \
+               "--log_pod_threshold ${log_pod_threshold}" + \
+               (" --use_pod_genotyper" if self.conf["inputs"]["use_pod_genotyper"] else " --use_beta_density") + \
+               (" -s ${common_snp_list}" if self.conf["inputs"]["common_snp_list"] else "")
     outputs = {
         "tumor_hets" : "het_coverage.tumor.tsv",
         "normal_hets" : "het_coverage.normal.tsv",
         "normal_genotype" : "het_coverage.genotype.tsv"
     }
     resources = { "mem" : "4G" }
-    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v33"
+    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v39"
 
 class gather_het_coverage(wolf.Task):
     inputs = {
