@@ -10,6 +10,7 @@ class get_het_coverage_from_callstats(wolf.Task):
         "beta_dens_cutoff" : 0.7,
         "log_pod_threshold" : "2.5",
         "max_frac_mapq0" : "0.05",
+        "max_frac_prefiltered" : "0.1",
         "use_pod_genotyper" : True
     }
     def script(self):
