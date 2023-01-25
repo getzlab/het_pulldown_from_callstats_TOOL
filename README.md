@@ -33,7 +33,7 @@ The interval bounds (0.4, 0.6) and probability cutoff (0.7) can be overridden.
 ```
 usage: hetpull.py [-h] -c callstats_in -r ref_in -o output_prefix 
                   [-s snplist_in] [-g] 
-                  [--use_pod_genotyper] [--log_pod_threshold threshold]
+                  [--use_pod_genotyper] [--log_pod_threshold threshold] [--pod_min_depth depth]
                   [--use_beta_density] [--af_lb lowerbound] [--af_ub upperbound] [--dens cutoff]
                   [--max_frac_mapq0 mapq0_frac] [--max_frac_prefiltered prefiltered_frac]
 
@@ -58,6 +58,7 @@ usage: hetpull.py [-h] -c callstats_in -r ref_in -o output_prefix
 * `-g`: Output genotype file (default FALSE)
 * `--use_pod_genotyper`: Use posterior odds method for genotyping (default)
 * `--log_pod_threshold threshold`: Exclude positions above Log Posterior Odds threshold (default 2.5)
+* `--pod_min_depth depth`: Exclude positions with read depth less than threshold, when using pod genotyper (default 10)
 * `--use_beta_density`: Use beta distribution density test for genotyping
 * `--af_lb lowerbound`: Lower bound on beta distribution interval (default 0.4)
 * `--af_ub upperbound`: Upper bound on beta distribution interval (default 0.6)
