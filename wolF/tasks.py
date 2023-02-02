@@ -11,12 +11,13 @@ class get_het_coverage_from_callstats(wolf.Task):
         "log_pod_threshold" : "2.5",
         "max_frac_mapq0" : "0.05",
         "max_frac_prefiltered" : "0.1",
-        "use_pod_genotyper" : True
+        "use_pod_genotyper" : True,
+        "pod_min_depth" : 10
     }
     def script(self):
         return "hetpull.py -g -c ${callstats_file} -r ${ref_fasta} -o het_coverage " \
                "--dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0} " \
-               "--log_pod_threshold ${log_pod_threshold}" + \
+               "--log_pod_threshold ${log_pod_threshold} --pod_min_depth ${pod_min_depth}" + \
                (" --use_pod_genotyper" if self.conf["inputs"]["use_pod_genotyper"] else " --use_beta_density") + \
                (" -s ${common_snp_list}" if self.conf["inputs"]["common_snp_list"] else "")
     outputs = {
@@ -25,7 +26,7 @@ class get_het_coverage_from_callstats(wolf.Task):
         "normal_genotype" : "het_coverage.genotype.tsv"
     }
     resources = { "mem" : "4G" }
-    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v42"
+    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v52"
 
 class gather_het_coverage(wolf.Task):
     inputs = {
@@ -57,6 +58,7 @@ def get_het_coverage_from_callstats_legacy_workflow(
   max_frac_mapq0 = 0.05,
   use_pod_genotyper = False,
   log_pod_threshold = 2.5,
+  pod_min_depth = 10,
   normal_bam = None,
   normal_bai = None,
 ):
@@ -126,6 +128,7 @@ EOF
             "ref_fasta_dict" : ref_fasta_dict,
             "beta_dens_cutoff" : cutoff,
             "log_pod_threshold" : log_pod_threshold,
+            "pod_min_depth" : pod_min_depth,
             "max_frac_mapq0" : max_frac_mapq0
         }
     )
