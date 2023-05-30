@@ -21,6 +21,7 @@ def parse_args():
 	genotyper_parser = parser.add_mutually_exclusive_group(required=False)
 	genotyper_parser.add_argument("--use_pod_genotyper", dest="use_pod_genotyper",help = "Use posterior odds method for genotyping", action = "store_true")
 	genotyper_parser.add_argument("--use_beta_density", dest="use_pod_genotyper", help = "Use beta distribution density for genotyping", action = "store_false")
+	genotyper_parser.add_argument("--use_tonly_genotyper", help = "Genotype in single sample mode", action = "store_true")
 	parser.add_argument("--pod_min_depth", type=int, default=10,
 						help="Any position with total coverage below this threshold will not be considered for genotyping")
 
@@ -128,22 +129,35 @@ if __name__ == "__main__":
 	else:
 		H = CS
 
-	# compute which sites in the SNP list are confidently heterozygous in the normal
-	A = H["n_altcount"].values[:, None]
-	B = H["n_refcount"].values[:, None]
-	# bdens = \int_{af_lb}^{af_ub} df beta(f | n_alt + 1, n_ref + 1)
-	H["bdens"] = s.beta.cdf(args.af_ub, A + 1, B + 1) - s.beta.cdf(args.af_lb, A + 1, B + 1)
-	# log posterior ratio (alternate method of genotyping; true positive rate is stable WRT coverage)
-	H["log_pod"] = np.abs(s.beta.logsf(0.5, A + 1, B + 1) - s.beta.logcdf(0.5, A + 1, B + 1))
+	good_idx = None
+	if not args.use_tonly_genotyper:
+		# compute which sites in the SNP list are confidently heterozygous in the normal
+		A = H["n_altcount"].values[:, None]
+		B = H["n_refcount"].values[:, None]
+		# bdens = \int_{af_lb}^{af_ub} df beta(f | n_alt + 1, n_ref + 1)
+		H["bdens"] = s.beta.cdf(args.af_ub, A + 1, B + 1) - s.beta.cdf(args.af_lb, A + 1, B + 1)
+		# log posterior ratio (alternate method of genotyping; true positive rate is stable WRT coverage)
+		H["log_pod"] = np.abs(s.beta.logsf(0.5, A + 1, B + 1) - s.beta.logcdf(0.5, A + 1, B + 1))
 
-	# compute which sites are confidently homozygous alt. in the normal
-	H["bdens_hom"] = 1 - s.beta.cdf(0.95, H["n_altcount"].values[:, None] + 1, H["n_refcount"].values[:, None] + 1)
+		# compute which sites are confidently homozygous alt. in the normal
+		H["prob_homalt"] = 1 - s.beta.cdf(0.95, H["n_altcount"].values[:, None] + 1, H["n_refcount"].values[:, None] + 1)
 
-	# save tumor het coverage at good sites to file (GATK GetHetCoverage format)
-	if args.use_pod_genotyper:
-		good_idx = ( H["log_pod"] < args.log_pod_threshold ) & ( H["n_altcount"]+H["n_refcount"] >= args.pod_min_depth )
+		# save tumor het coverage at good sites to file (GATK GetHetCoverage format)
+		if args.use_pod_genotyper:
+			good_idx = ( H["log_pod"] < args.log_pod_threshold ) & ( H["n_altcount"]+H["n_refcount"] >= args.pod_min_depth )
+		else:
+			good_idx = H["bdens"] > args.dens
+
+	# genotype sites based only on the tumor. rather than identifying sites that
+	# are confidently homozygous in the normal, we identify sites that are confidently
+	# NOT homozygous in the tumor.
 	else:
-		good_idx = H["bdens"] > args.dens
+		H["prob_homalt"] = s.beta.sf(0.98, H["t_altcount"].values[:, None] + 1, H["t_refcount"].values[:, None] + 1)
+		H["prob_homref"] = s.beta.cdf(0.02, H["t_altcount"].values[:, None] + 1, H["t_refcount"].values[:, None] + 1)
+
+		good_idx = (H["prob_homalt"] < 0.01) & (H["prob_homref"] < 0.1)
+
+	# save tumor het coverage to file
 	print("Identified {} high quality het sites in normal.".format(good_idx.sum()), file = sys.stderr)
 	H.loc[good_idx, ["chr", "pos", "t_refcount", "t_altcount"]].rename(columns = { "chr" : "CONTIG", "pos" : "POSITION", "t_refcount" : "REF_COUNT", "t_altcount" : "ALT_COUNT" }).to_csv(args.o + ".tumor.tsv", sep = "\t", index = False)
 
@@ -153,7 +167,8 @@ if __name__ == "__main__":
 	# if requested, save genotype file as TSV (23andme style) 
 	if args.g:
 		het_idx = good_idx
-		hom_idx = H["bdens_hom"] > args.dens
+		hom_idx = (H["prob_homalt"] > args.dens) if not args.use_tonly_genotyper else \
+			      (~good_idx & (H["prob_homalt"] > 0.3)) # require minimum coverage of ~17x
 		gen_idx = het_idx | hom_idx
 		G = H.loc[gen_idx, ["chr", "pos", "allele"]]
 
