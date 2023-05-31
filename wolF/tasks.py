@@ -12,13 +12,14 @@ class get_het_coverage_from_callstats(wolf.Task):
         "max_frac_mapq0" : "0.05",
         "max_frac_prefiltered" : "0.1",
         "use_pod_genotyper" : True,
+        "tumor_only" : False,
         "pod_min_depth" : 10
     }
     def script(self):
         return "hetpull.py -g -c ${callstats_file} -r ${ref_fasta} -o het_coverage " \
                "--dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0} " \
                "--log_pod_threshold ${log_pod_threshold} --pod_min_depth ${pod_min_depth}" + \
-               (" --use_pod_genotyper" if self.conf["inputs"]["use_pod_genotyper"] else " --use_beta_density") + \
+               ((" --use_pod_genotyper" if self.conf["inputs"]["use_pod_genotyper"] else " --use_beta_density") if not self.conf["inputs"]["tumor_only"] else " --use_tonly_genotyper") + \
                (" -s ${common_snp_list}" if self.conf["inputs"]["common_snp_list"] else "")
     outputs = {
         "tumor_hets" : "het_coverage.tumor.tsv",
@@ -26,7 +27,7 @@ class get_het_coverage_from_callstats(wolf.Task):
         "normal_genotype" : "het_coverage.genotype.tsv"
     }
     resources = { "mem" : "4G" }
-    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v52"
+    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:tonly_v56"
 
 class gather_het_coverage(wolf.Task):
     inputs = {
