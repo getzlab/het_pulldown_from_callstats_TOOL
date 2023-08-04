@@ -91,10 +91,12 @@ if __name__ == "__main__":
 	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
 	CS = CS.drop(columns = ["alt", "ref"])
 
+	print(f"{len(CS)} sites loaded.", file = sys.stderr)
+
 	## prefilter poor quality sites
 
 	# 1. excess fraction of MAPQ0 reads at pileup
-	frac_mapq0 = CS["mapq0_reads"]/CS["total_reads"] # M1 doesnt report sites with cov=0 (to be confirmed?)
+	frac_mapq0 = CS["mapq0_reads"]/CS["total_reads"] # NOTE: M1 doesnt report sites with cov=0 if not run in forcecalling mode
 	mapq_pass_idx = frac_mapq0 <= args.max_frac_mapq0
 	print("{} sites with >{}% of MAPQ0 reads will be dropped.".format(len(CS) - mapq_pass_idx.sum(), args.max_frac_mapq0*100), file = sys.stderr)
 
@@ -103,7 +105,6 @@ if __name__ == "__main__":
 	frac_prefiltered = 1 - CS.loc[:, ["t_refcount", "t_altcount"]].sum(1)/tumor_total_reads
 	prefilter_pass_idx = frac_prefiltered <= args.max_frac_prefiltered
 	print("{} sites with >{}% of prefiltered reads will be dropped.".format(len(CS) - prefilter_pass_idx.sum(), args.max_frac_prefiltered*100), file = sys.stderr)
-	print("{} total sites will be dropped.".format(len(CS) - (mapq_pass_idx & prefilter_pass_idx).sum()), file = sys.stderr)
 
 	# print(CS.loc[~prefilter_pass_idx].head(50), file = sys.stderr)
 
@@ -116,7 +117,7 @@ if __name__ == "__main__":
 	CS = CS.loc[mapq_pass_idx & prefilter_pass_idx & tum_cov_idx]
 
 	CS = CS.drop(columns = ["mapq0_reads", "total_reads"])
-	print("{} sites loaded.".format(CS.shape[0]), file = sys.stderr)
+	print("{} passing sites.".format(CS.shape[0]), file = sys.stderr)
 
 	# load in SNP list
 	if args.s is not None:
