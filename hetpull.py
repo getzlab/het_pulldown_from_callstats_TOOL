@@ -23,7 +23,9 @@ def parse_args():
 	genotyper_parser.add_argument("--use_beta_density", dest="use_pod_genotyper", help = "Use beta distribution density for genotyping", action = "store_false")
 	genotyper_parser.add_argument("--use_tonly_genotyper", help = "Genotype in single sample mode", action = "store_true")
 	parser.add_argument("--pod_min_depth", type=int, default=10,
-						help="Any position with total coverage below this threshold will not be considered for genotyping")
+						help="Any position with total normal coverage below this threshold will not be considered for genotyping")
+	parser.add_argument("--min_tumor_depth", type=int, default=1,
+						help="Any position with total tumor coverage below this threshold will be discarded")
 
 	parser.add_argument("--log_pod_threshold", type = float, metavar='threshold', default = 2.5)
 	parser.add_argument("--af_lb", help = "Lower bound on beta distribution AF interval", default = 0.4, type = float, metavar = "lowerbound")
@@ -105,7 +107,13 @@ if __name__ == "__main__":
 
 	# print(CS.loc[~prefilter_pass_idx].head(50), file = sys.stderr)
 
-	CS = CS.loc[mapq_pass_idx & prefilter_pass_idx]
+	# 3. too few reads overall
+	tum_cov_idx = (CS["t_altcount"] + CS["t_refcount"] >= args.min_tumor_depth)
+	print(f"{(~tum_cov_idx).sum()} sites not sufficiently covered in tumor (cutoff {args.min_tumor_depth}x) will be dropped.", file = sys.stderr)
+	print("{} total sites will be dropped; ".format(len(CS) - (mapq_pass_idx & prefilter_pass_idx & tum_cov_idx).sum()), file = sys.stderr, end = "")
+
+	# perform filtering
+	CS = CS.loc[mapq_pass_idx & prefilter_pass_idx & tum_cov_idx]
 
 	CS = CS.drop(columns = ["mapq0_reads", "total_reads"])
 	print("{} sites loaded.".format(CS.shape[0]), file = sys.stderr)

@@ -13,12 +13,14 @@ class get_het_coverage_from_callstats(wolf.Task):
         "max_frac_prefiltered" : "0.1",
         "use_pod_genotyper" : True,
         "tumor_only" : False,
-        "pod_min_depth" : 10
+        "pod_min_depth" : 10,
+        "min_tumor_depth" : 1
     }
     def script(self):
         return "hetpull.py -g -c ${callstats_file} -r ${ref_fasta} -o het_coverage " \
                "--dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0} " \
                "--log_pod_threshold ${log_pod_threshold} --pod_min_depth ${pod_min_depth}" + \
+               (" --min_tumor_depth ${min_tumor_depth}" if self.conf["inputs"]["min_tumor_depth"] != "" else "") + \
                ((" --use_pod_genotyper" if self.conf["inputs"]["use_pod_genotyper"] else " --use_beta_density") if not self.conf["inputs"]["tumor_only"] else " --use_tonly_genotyper") + \
                (" -s ${common_snp_list}" if self.conf["inputs"]["common_snp_list"] else "")
     outputs = {
