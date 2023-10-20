@@ -9,6 +9,8 @@ import subprocess
 import sys
 from capy import seq
 
+from hetmodels import run_snp_mixture_model
+
 def parse_args():
 	# parse args
 	parser = argparse.ArgumentParser(description = "Get het site coverage from MuTect 1 callstats file")
@@ -19,10 +21,13 @@ def parse_args():
 	parser.add_argument("-g", help = "Output genotype file", action = "store_true")
 
 	genotyper_parser = parser.add_mutually_exclusive_group(required=False)
-	genotyper_parser.add_argument("--use_pod_genotyper", dest="use_pod_genotyper",help = "Use posterior odds method for genotyping", action = "store_true")
-	genotyper_parser.add_argument("--use_beta_density", dest="use_pod_genotyper", help = "Use beta distribution density for genotyping", action = "store_false")
+	genotyper_parser.add_argument("--method", dest="method", help = "Selection method to use: mixture_model, pod, beta_density", action = "store_true")
+	genotyper_parser.add_argument("--use_pod_genotyper", dest="use_pod_genotyper",help = "(Deprecated use --method argument) Use posterior odds method for genotyping", action = "store_true")
+	genotyper_parser.add_argument("--use_beta_density", dest="use_pod_genotyper", help = "(Deprecated use --method argument) Use beta distribution density for genotyping", action = "store_false")
 	genotyper_parser.add_argument("--use_tonly_genotyper", help = "Genotype in single sample mode", action = "store_true")
 	parser.add_argument("--pod_min_depth", type=int, default=10,
+						help="(Deprecated, use min_normal_depth) Any position with total normal coverage below this threshold will not be considered for genotyping")
+	parser.add_argument("--min_normal_depth", type=int, default=10,
 						help="Any position with total normal coverage below this threshold will not be considered for genotyping")
 	parser.add_argument("--min_tumor_depth", type=int, default=1,
 						help="Any position with total tumor coverage below this threshold will be discarded")
@@ -139,7 +144,25 @@ if __name__ == "__main__":
 		H = CS
 
 	good_idx = None
+
 	if not args.use_tonly_genotyper:
+		A = H["n_altcount"].values[:, None]
+		B = H["n_refcount"].values[:, None]
+
+	else:
+		A = H["t_altcount"].values[:, None]
+		B = H["t_refcount"].values[:, None]
+
+	if args.use_mixture_model:
+		outs = run_snp_mixture_model(B,A)
+
+		H[outs['snp_prob'].columns] = outs['snp_prob'].values
+
+		if args.use_tonly_genotyper:
+			good_idx = (H['prob_het'] + H['prob_other']) > .99
+		else:
+			good_idx = H['prob_het'] > .7
+	elif not args.use_tonly_genotyper:
 		# compute which sites in the SNP list are confidently heterozygous in the normal
 		A = H["n_altcount"].values[:, None]
 		B = H["n_refcount"].values[:, None]
