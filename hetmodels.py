@@ -37,7 +37,7 @@ def run_snp_mixture_model(nref, nalt, alpha=None, nit=50):
 
         print(f'skew : {skew}, epsilon : {epsilon}, pi : {pi}')
 
-    p_df = pd.DataFrame(snp_post,columns = ['prob_homalt','prob_homref','prob_homalt','prob_other'])
+    p_df = pd.DataFrame(snp_post,columns = ['prob_het','prob_homref','prob_homalt','prob_other'])
 
     return ({'snp_prob':p_df,'epsilon': epsilon, 'skew': skew, 'pi': pi})
 
