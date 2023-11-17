@@ -5,6 +5,7 @@ class get_het_coverage_from_callstats(wolf.Task):
         "callstats_file" : None,
         "ref_fasta" : None,
         "ref_fasta_idx" : None,
+        "ref_fasta_dict" : None,
         "method" : None,
         "common_snp_list": "",
         "beta_dens_cutoff" : 0.7,
