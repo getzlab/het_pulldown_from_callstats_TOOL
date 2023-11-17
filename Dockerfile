@@ -6,3 +6,4 @@ RUN git clone https://github.com/getzlab/CApy.git && cd CApy && git checkout eb9
 WORKDIR /app
 ENV PATH=$PATH:/app
 COPY hetpull.py .
+COPY hetmodels.py .

@@ -9,6 +9,8 @@ import subprocess
 import sys
 from capy import seq
 
+from hetmodels import run_snp_mixture_model
+
 def parse_args():
 	# parse args
 	parser = argparse.ArgumentParser(description = "Get het site coverage from MuTect 1 callstats file")
@@ -19,10 +21,14 @@ def parse_args():
 	parser.add_argument("-g", help = "Output genotype file", action = "store_true")
 
 	genotyper_parser = parser.add_mutually_exclusive_group(required=False)
-	genotyper_parser.add_argument("--use_pod_genotyper", dest="use_pod_genotyper",help = "Use posterior odds method for genotyping", action = "store_true")
-	genotyper_parser.add_argument("--use_beta_density", dest="use_pod_genotyper", help = "Use beta distribution density for genotyping", action = "store_false")
-	genotyper_parser.add_argument("--use_tonly_genotyper", help = "Genotype in single sample mode", action = "store_true")
+	genotyper_parser.add_argument("-m", dest="method", help = "Selection method to use: mixture_model, pod, beta_density", choices=['mixture_model', 'pod', 'beta_density'], metavar="method")
+	genotyper_parser.add_argument("--use_pod_genotyper", dest="use_pod_genotyper",help = "(Deprecated use --method argument) Use posterior odds method for genotyping", action = "store_true")
+	genotyper_parser.add_argument("--use_beta_density", dest="use_pod_genotyper", help = "(Deprecated use --method argument) Use beta distribution density for genotyping", action = "store_false")
+	
+	parser.add_argument("--use_tonly_genotyper", help = "Genotype in single sample mode", action = "store_true")
 	parser.add_argument("--pod_min_depth", type=int, default=10,
+						help="(Deprecated, use min_normal_depth) Any position with total normal coverage below this threshold will not be considered for genotyping")
+	parser.add_argument("--min_normal_depth", type=int, default=10,
 						help="Any position with total normal coverage below this threshold will not be considered for genotyping")
 	parser.add_argument("--min_tumor_depth", type=int, default=1,
 						help="Any position with total tumor coverage below this threshold will be discarded")
@@ -35,7 +41,8 @@ def parse_args():
 	parser.add_argument("--max_frac_mapq0", help = "Any position from callstats with more than this percentage of MAPQ0 reads will be excluded from het coverage analysis.", default = 0.05, type = float, metavar = "mapq0_frac")
 	parser.add_argument("--max_frac_prefiltered", help = "Any site with more than this fraction of total reads prefiltered by MuTect will be excluded.", default = 0.10, type = float, metavar = "prefiltered_frac")
 
-	parser.set_defaults(use_pod_genotyper=True)
+	parser.set_defaults(use_pod_genotyper=False)
+	parser.set_defaults(use_beta_density=False)
 	args = parser.parse_args()
 
 	# check args
@@ -55,6 +62,9 @@ def parse_args():
 		raise ValueError("Max fraction of reads with MAPQ0 at a given position must be between 0 and 1!")
 	if not 0 <= args.max_frac_prefiltered <= 1:
 		raise ValueError("Max fraction of prefiltered reads must be between 0 and 1!")
+
+	if args.use_pod_genotyper or args.use_beta_density:
+		raise ValueError("--use_pod_genotyper and --use_beta_density deprecated, use -m argument")
 
 	if not os.path.exists(args.c):
 		raise FileNotFoundError("Callstats file not found!")
@@ -139,7 +149,27 @@ if __name__ == "__main__":
 		H = CS
 
 	good_idx = None
+
 	if not args.use_tonly_genotyper:
+		A = H["n_altcount"].values[:, None]
+		B = H["n_refcount"].values[:, None]
+
+	else:
+		A = H["t_altcount"].values[:, None]
+		B = H["t_refcount"].values[:, None]
+		print('Using Tumor Only Genotyping')
+
+	if args.method == "mixture_model":
+		outs = run_snp_mixture_model(B,A)
+
+		H[outs['snp_prob'].columns] = outs['snp_prob'].values
+
+		if args.use_tonly_genotyper:
+			good_idx = (H['prob_het'] + H['prob_other']) > .99
+		else:
+			good_idx = H['prob_het'] > .7
+            
+	elif not args.use_tonly_genotyper:
 		# compute which sites in the SNP list are confidently heterozygous in the normal
 		A = H["n_altcount"].values[:, None]
 		B = H["n_refcount"].values[:, None]
@@ -152,7 +182,7 @@ if __name__ == "__main__":
 		H["prob_homalt"] = 1 - s.beta.cdf(0.95, H["n_altcount"].values[:, None] + 1, H["n_refcount"].values[:, None] + 1)
 
 		# save tumor het coverage at good sites to file (GATK GetHetCoverage format)
-		if args.use_pod_genotyper:
+		if args.method=='pod':
 			good_idx = ( H["log_pod"] < args.log_pod_threshold ) & ( H["n_altcount"]+H["n_refcount"] >= args.pod_min_depth )
 		else:
 			good_idx = H["bdens"] > args.dens
@@ -165,6 +195,9 @@ if __name__ == "__main__":
 		H["prob_homref"] = s.beta.cdf(0.02, H["t_altcount"].values[:, None] + 1, H["t_refcount"].values[:, None] + 1)
 
 		good_idx = (H["prob_homalt"] < 0.01) & (H["prob_homref"] < 0.1)
+
+	# save all possible het sites to file
+	H.to_csv(args.o + ".all_sites.tsv", sep = "\t", index = False)
 
 	# save tumor het coverage to file
 	print("Identified {} high quality het sites in normal.".format(good_idx.sum()), file = sys.stderr)
