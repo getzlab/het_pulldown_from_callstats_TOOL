@@ -6,30 +6,31 @@ class get_het_coverage_from_callstats(wolf.Task):
         "ref_fasta" : None,
         "ref_fasta_idx" : None,
         "ref_fasta_dict" : None,
+        "method" : None,
         "common_snp_list": "",
         "beta_dens_cutoff" : 0.7,
         "log_pod_threshold" : "2.5",
         "max_frac_mapq0" : "0.05",
         "max_frac_prefiltered" : "0.1",
-        "use_pod_genotyper" : True,
         "tumor_only" : False,
         "pod_min_depth" : 10,
         "min_tumor_depth" : 1
     }
     def script(self):
-        return "hetpull.py -g -c ${callstats_file} -r ${ref_fasta} -o het_coverage " \
-               "--dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0} " \
-               "--log_pod_threshold ${log_pod_threshold} --pod_min_depth ${pod_min_depth}" + \
+        return "hetpull.py -g -c ${callstats_file} -r ${ref_fasta} -o het_coverage " + \
+               "--dens ${beta_dens_cutoff} --max_frac_mapq0 ${max_frac_mapq0} -m ${method} " + \
+               "--log_pod_threshold ${log_pod_threshold} --pod_min_depth ${pod_min_depth} " + \
+               ("--use_tonly_genotyper " if self.conf['inputs']["tumor_only"] else "") + \
                (" --min_tumor_depth ${min_tumor_depth}" if self.conf["inputs"]["min_tumor_depth"] != "" else "") + \
-               ((" --use_pod_genotyper" if self.conf["inputs"]["use_pod_genotyper"] else " --use_beta_density") if not self.conf["inputs"]["tumor_only"] else " --use_tonly_genotyper") + \
                (" -s ${common_snp_list}" if self.conf["inputs"]["common_snp_list"] else "")
     outputs = {
         "tumor_hets" : "het_coverage.tumor.tsv",
         "normal_hets" : "het_coverage.normal.tsv",
-        "normal_genotype" : "het_coverage.genotype.tsv"
+        "normal_genotype" : "het_coverage.genotype.tsv",
+        "all_sites" : "het_coverage.all_sites.tsv",
     }
     resources = { "mem" : "4G" }
-    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v61"
+    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v62"
 
 class gather_het_coverage(wolf.Task):
     inputs = {
