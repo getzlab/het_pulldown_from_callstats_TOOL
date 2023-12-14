@@ -82,9 +82,59 @@ def parse_args():
 def hash_altref(DF):
 	return (DF.replace(dict(zip(list("ACGT"), range(0, 4))))@[4, 1]).astype(np.uint8)
 
+def load_callstats_file(cs_file,ref_file):
+	# trim callstats (faster to do this on the shell)
+	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(cs_file), shell=True,
+										 stdout=subprocess.PIPE)
+
+	# load in callstats
+	print("Loading callstats file ...", file=sys.stderr)
+	CS = pd.read_csv(callstats_trimmed.stdout, sep="\t",
+					 names=["chr", "pos", "ref", "alt", "total_reads", "mapq0_reads", "t_refcount", "t_altcount",
+							"n_refcount", "n_altcount"],
+					 dtype={"chr": str, "pos": np.uint32, "total_reads": np.uint32, "mapq0_reads": np.uint32,
+							"t_refcount": np.uint32, "t_altcount": np.uint32, "n_refcount": np.uint32,
+							"n_altcount": np.uint32}
+					 )
+	contig_list = pd.read_csv(ref_file + '.fai', sep='\t', usecols=[0], names=["contig"])["contig"].tolist()
+	CS["chr"] = CS["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
+	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref=ref_file)
+	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
+	CS = CS.drop(columns=["alt", "ref"])
+
+	return(CS)
+
+
+def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
+	# 1. excess fraction of MAPQ0 reads at pileup
+	frac_mapq0 = CS["mapq0_reads"]/CS["total_reads"] # NOTE: M1 doesnt report sites with cov=0 if not run in forcecalling mode
+	mapq_pass_idx = frac_mapq0 <= max_frac_mapq0
+	print("{} sites with >{}% of MAPQ0 reads will be dropped.".format(len(CS) - mapq_pass_idx.sum(), max_frac_mapq0*100), file = sys.stderr)
+
+	# 2. excess fraction of tumor reads pre-filtered by MuTect
+	tumor_total_reads = CS["total_reads"] - CS.loc[:, ["n_refcount", "n_altcount"]].sum(1)
+	frac_prefiltered = 1 - CS.loc[:, ["t_refcount", "t_altcount"]].sum(1)/tumor_total_reads
+	prefilter_pass_idx = frac_prefiltered <= max_frac_prefiltered
+	print("{} sites with >{}% of prefiltered reads will be dropped.".format(len(CS) - prefilter_pass_idx.sum(), max_frac_prefiltered*100), file = sys.stderr)
+
+	# print(CS.loc[~prefilter_pass_idx].head(50), file = sys.stderr)
+
+	# 3. too few reads overall
+	tum_cov_idx = (CS["t_altcount"] + CS["t_refcount"] >= min_tumor_depth)
+	print(f"{(~tum_cov_idx).sum()} sites not sufficiently covered in tumor (cutoff {min_tumor_depth}x) will be dropped.", file = sys.stderr)
+	print("{} total sites will be dropped; ".format(len(CS) - (mapq_pass_idx & prefilter_pass_idx & tum_cov_idx).sum()), file = sys.stderr, end = "")
+
+	# perform filtering
+	CS = CS.loc[mapq_pass_idx & prefilter_pass_idx & tum_cov_idx]
+
+	CS = CS.drop(columns = ["mapq0_reads", "total_reads"])
+
+	return(CS)
 
 if __name__ == "__main__":
 	args = parse_args()
+
+	CS = load_callstats_file(args.c)
 
 	# trim callstats (faster to do this on the shell)
 	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(args.c), shell = True, stdout = subprocess.PIPE)
@@ -105,28 +155,10 @@ if __name__ == "__main__":
 
 	## prefilter poor quality sites
 
-	# 1. excess fraction of MAPQ0 reads at pileup
-	frac_mapq0 = CS["mapq0_reads"]/CS["total_reads"] # NOTE: M1 doesnt report sites with cov=0 if not run in forcecalling mode
-	mapq_pass_idx = frac_mapq0 <= args.max_frac_mapq0
-	print("{} sites with >{}% of MAPQ0 reads will be dropped.".format(len(CS) - mapq_pass_idx.sum(), args.max_frac_mapq0*100), file = sys.stderr)
+	CS = apply_prefilters(CS,max_frac_mapq0=args.max_frac_mapq0,
+						  max_frac_prefiltered=args.max_frac_prefiltered,
+						  min_tumor_depth=args.min_tumor_depth)
 
-	# 2. excess fraction of tumor reads pre-filtered by MuTect
-	tumor_total_reads = CS["total_reads"] - CS.loc[:, ["n_refcount", "n_altcount"]].sum(1)
-	frac_prefiltered = 1 - CS.loc[:, ["t_refcount", "t_altcount"]].sum(1)/tumor_total_reads
-	prefilter_pass_idx = frac_prefiltered <= args.max_frac_prefiltered
-	print("{} sites with >{}% of prefiltered reads will be dropped.".format(len(CS) - prefilter_pass_idx.sum(), args.max_frac_prefiltered*100), file = sys.stderr)
-
-	# print(CS.loc[~prefilter_pass_idx].head(50), file = sys.stderr)
-
-	# 3. too few reads overall
-	tum_cov_idx = (CS["t_altcount"] + CS["t_refcount"] >= args.min_tumor_depth)
-	print(f"{(~tum_cov_idx).sum()} sites not sufficiently covered in tumor (cutoff {args.min_tumor_depth}x) will be dropped.", file = sys.stderr)
-	print("{} total sites will be dropped; ".format(len(CS) - (mapq_pass_idx & prefilter_pass_idx & tum_cov_idx).sum()), file = sys.stderr, end = "")
-
-	# perform filtering
-	CS = CS.loc[mapq_pass_idx & prefilter_pass_idx & tum_cov_idx]
-
-	CS = CS.drop(columns = ["mapq0_reads", "total_reads"])
 	print("{} passing sites.".format(CS.shape[0]), file = sys.stderr)
 
 	# load in SNP list
@@ -162,12 +194,15 @@ if __name__ == "__main__":
 	if args.method == "mixture_model":
 		outs = run_snp_mixture_model(B,A)
 
-		H[outs['snp_prob'].columns] = outs['snp_prob'].values
 
 		if args.use_tonly_genotyper:
+			outs = run_snp_mixture_model(B,A)
+			H[outs['snp_prob'].columns] = outs['snp_prob'].values
 			good_idx = (H['prob_het'] + H['prob_other']) > .99
 		else:
-			good_idx = H['prob_het'] > .7
+			outs = run_snp_mixture_model(B,A,include_noise_component=True,fix_noise_component=1e-5)
+			H[outs['snp_prob'].columns] = outs['snp_prob'].values
+			good_idx = H['prob_het'] > .999
             
 	elif not args.use_tonly_genotyper:
 		# compute which sites in the SNP list are confidently heterozygous in the normal
@@ -226,3 +261,4 @@ if __name__ == "__main__":
 
 		# save
 		G.drop(columns = ["allele"]).to_csv(args.o + ".genotype.tsv", sep = "\t", index = False)
+
