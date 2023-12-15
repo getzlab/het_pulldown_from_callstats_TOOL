@@ -134,7 +134,7 @@ def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
 if __name__ == "__main__":
 	args = parse_args()
 
-	CS = load_callstats_file(args.c)
+	CS = load_callstats_file(args.c,args.r)
 
 	# trim callstats (faster to do this on the shell)
 	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(args.c), shell = True, stdout = subprocess.PIPE)

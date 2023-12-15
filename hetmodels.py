@@ -13,6 +13,9 @@ def run_snp_mixture_model(nref, nalt, include_noise_component=True,fix_noise_com
     """
     print('running mixture model')
 
+    nref = nref.reshape(-1)
+    nalt = nalt.reshape(-1)
+
     if alpha is None:
         f_alt = sum(nalt)/(sum(nref)+sum(nalt))
         alpha = 10000 * np.array([2*f_alt*(1-f_alt),(1-f_alt)**2,f_alt**2])
