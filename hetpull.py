@@ -84,8 +84,7 @@ def hash_altref(DF):
 
 def load_callstats_file(cs_file,ref_file):
 	# trim callstats (faster to do this on the shell)
-	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(cs_file), shell=True,
-										 stdout=subprocess.PIPE)
+	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(cs_file), shell=True, stdout=subprocess.PIPE)
 
 	# load in callstats
 	print("Loading callstats file ...", file=sys.stderr)
@@ -134,7 +133,7 @@ def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
 if __name__ == "__main__":
 	args = parse_args()
 
-	CS = load_callstats_file(args.c,args.r)
+	CS = load_callstats_file(args.c, args.r)
 
 	# trim callstats (faster to do this on the shell)
 	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(args.c), shell = True, stdout = subprocess.PIPE)
@@ -198,7 +197,7 @@ if __name__ == "__main__":
 		if args.use_tonly_genotyper:
 			outs = run_snp_mixture_model(B,A)
 			H[outs['snp_prob'].columns] = outs['snp_prob'].values
-			good_idx = (H['prob_het'] + H['prob_other']) > .99
+			good_idx = (H['prob_het'] + H['prob_other']) > .9999
 		else:
 			outs = run_snp_mixture_model(B,A,include_noise_component=True,fix_noise_component=1e-5)
 			H[outs['snp_prob'].columns] = outs['snp_prob'].values
