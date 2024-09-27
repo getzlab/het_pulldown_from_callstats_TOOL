@@ -30,7 +30,7 @@ class get_het_coverage_from_callstats(wolf.Task):
         "all_sites" : "het_coverage.all_sites.tsv",
     }
     resources = { "mem" : "4G" }
-    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v62"
+    docker = "gcr.io/broad-getzlab-workflows/het_pulldown_from_callstats:v65"
 
 class gather_het_coverage(wolf.Task):
     inputs = {
