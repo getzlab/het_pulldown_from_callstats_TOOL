@@ -91,35 +91,6 @@ def parse_args():
 def hash_altref(DF):
 	return (DF.replace(dict(zip(list("ACGT"), range(0, 4))))@[4, 1]).astype(np.uint8)
 
-def load_callstats_file(cs_file,ref_file):
-	# trim callstats (faster to do this on the shell)
-	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(cs_file), shell=True, stdout=subprocess.PIPE)
-
-	# load in callstats
-	print("Loading callstats file ...", file=sys.stderr)
-	CS = pd.read_csv(callstats_trimmed.stdout, sep="\t",
-					 names=["chr", "pos", "ref", "alt", "total_reads", "mapq0_reads", "t_refcount", "t_altcount",
-							"n_refcount", "n_altcount"],
-					 dtype={"chr": str, "pos": np.uint32, "total_reads": np.uint32, "mapq0_reads": np.uint32,
-							"t_refcount": np.uint32, "t_altcount": np.uint32, "n_refcount": np.uint32,
-							"n_altcount": np.uint32}
-					 )
-	contig_list = pd.read_csv(ref_file + '.fai', sep='\t', usecols=[0], names=["contig"])["contig"].tolist()
-
-	# Normalizing the names to be without 'chr'.
-	# We first check that this normalization would not cause name collisions.
-	if len({remove_prefix(s, 'chr') for s in contig_list}) == len(contig_list) and len(set(CS["chr"])) == len({remove_prefix(s, 'chr') for s in CS["chr"]}):
-		contig_list = [remove_prefix(s, 'chr') for s in contig_list]
-		CS["chr"] = CS["chr"].str.removeprefix("chr")
-
-
-	CS["chr"] = CS["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
-	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref=ref_file)
-	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
-	CS = CS.drop(columns=["alt", "ref"])
-
-	return(CS)
-
 
 def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
 	# 1. excess fraction of MAPQ0 reads at pileup
@@ -150,10 +121,9 @@ def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
 if __name__ == "__main__":
 	args = parse_args()
 
-	CS = load_callstats_file(args.c, args.r)
-
 	# trim callstats (faster to do this on the shell)
 	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(args.c), shell = True, stdout = subprocess.PIPE)
+	assert callstats_trimmed is not None, 'Failed to trim callstats!'
 
 	# load in callstats
 	print("Loading callstats file ...", file = sys.stderr)
@@ -165,12 +135,18 @@ if __name__ == "__main__":
 
 	# Normalizing the names to be without 'chr'.
 	# We first check that this normalization would not cause name collisions.
-	if len({remove_prefix(s, 'chr') for s in contig_list}) == len(contig_list) and len(set(CS["chr"])) == len({remove_prefix(s, 'chr') for s in CS["chr"]}):
-		contig_list = [remove_prefix(s, 'chr') for s in contig_list]
-		CS["chr"] = CS["chr"].str.removeprefix("chr")
+	safe_to_normalize_contig_list = len({remove_prefix(s, 'chr') for s in contig_list}) == len(contig_list) and len(set(CS["chr"]))
+	safe_to_normalize_callstats = len(set(CS["chr"])) == len({remove_prefix(s, 'chr') for s in CS["chr"]})
 
-	CS["chr"] = CS["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
-	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref = args.r)
+	normalize_names = safe_to_normalize_contig_list and safe_to_normalize_callstats
+	if normalize_names:
+		contig_list = [remove_prefix(s, 'chr') for s in contig_list]
+		CS["chr_idx"] = CS["chr"].str.removeprefix("chr")
+	else:
+		CS["chr_idx"] = CS["chr"]
+	CS["chr_idx"] = CS["chr_idx"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
+
+	CS["gpos"] = seq.chrpos2gpos(CS["chr_idx"], CS["pos"], ref = args.r)
 	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
 	CS = CS.drop(columns = ["alt", "ref"])
 
@@ -191,8 +167,14 @@ if __name__ == "__main__":
 		  names = ["chr", "pos", "x", "y", "allele"],
 		  dtype = { "chr" : str, "pos" : np.uint32, "x" : np.uint32, "y" : str, "allele" : str },
 		).drop(columns = ["x", "y"])
-		H["chr"] = H["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
-		H["gpos"] = seq.chrpos2gpos(H["chr"], H["pos"], ref = args.r)
+
+		if normalize_names:
+			assert len(set(H["chr"])) == len(set(H["chr"].str.removeprefix("chr"))), "Bad SNP list chromosome set!"
+			H["chr_idx"] = H["chr"].str.removeprefix("chr")
+		else:
+			H["chr_idx"] = H["chr"]
+		H["chr_idx"] = H["chr_idx"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
+		H["gpos"] = seq.chrpos2gpos(H["chr_idx"], H["pos"], ref = args.r)
 		H["allele"] = hash_altref(H["allele"].str.extract(r"(.)/(.)"))
 		print("{} sites loaded.".format(H.shape[0]), file = sys.stderr)
 
@@ -208,16 +190,12 @@ if __name__ == "__main__":
 	if not args.use_tonly_genotyper:
 		A = H["n_altcount"].values[:, None]
 		B = H["n_refcount"].values[:, None]
-
 	else:
 		A = H["t_altcount"].values[:, None]
 		B = H["t_refcount"].values[:, None]
 		print('Using Tumor Only Genotyping')
 
 	if args.method == "mixture_model":
-		outs = run_snp_mixture_model(B,A)
-
-
 		if args.use_tonly_genotyper:
 			outs = run_snp_mixture_model(B,A)
 			H[outs['snp_prob'].columns] = outs['snp_prob'].values
@@ -276,11 +254,6 @@ if __name__ == "__main__":
 		alt_ref = np.array(["A", "C", "G", "T"])[np.c_[(G["allele"].values & 0xC) >> 2, G["allele"].values & 3]]
 		alt_ref[hom_idx[gen_idx], 1] = alt_ref[hom_idx[gen_idx], 0] 
 		G["genotype"] = np.char.add(alt_ref[:, -1], alt_ref[:, 0])
-
-		# restore original contig names
-		# XXX: we should probably do this for the coverage files -- how is our
-		#      pipeline OK with not doing this?
-		G["chr"] = G["chr"].apply(lambda x: contig_list[x - 1])
 
 		# save
 		G.drop(columns = ["allele"]).to_csv(args.o + ".genotype.tsv", sep = "\t", index = False)
