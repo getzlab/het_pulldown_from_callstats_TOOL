@@ -11,6 +11,15 @@ from capy import seq
 
 from hetmodels import run_snp_mixture_model
 
+def remove_prefix(s: str, prefix: str) -> str:
+	"""
+	Removes a prefix from the string, if it is present. Otherwise, returns the original string.
+	"""
+	if s[:len(prefix)] == prefix:
+		return s[len(prefix):]
+	else:
+		return s
+
 def parse_args():
 	# parse args
 	parser = argparse.ArgumentParser(description = "Get het site coverage from MuTect 1 callstats file")
@@ -99,8 +108,8 @@ def load_callstats_file(cs_file,ref_file):
 
 	# Normalizing the names to be without 'chr'.
 	# We first check that this normalization would not cause name collisions.
-	if len({s.removeprefix('chr') for s in contig_list}) == len(contig_list) and len(set(CS["chr"])) == len({s.removeprefix('chr') for s in CS["chr"]}):
-		contig_list = [s.removeprefix('chr') for s in contig_list]
+	if len({remove_prefix(s, 'chr') for s in contig_list}) == len(contig_list) and len(set(CS["chr"])) == len({remove_prefix(s, 'chr') for s in CS["chr"]}):
+		contig_list = [remove_prefix(s, 'chr') for s in contig_list]
 		CS["chr"] = CS["chr"].str.removeprefix("chr")
 
 
@@ -156,8 +165,8 @@ if __name__ == "__main__":
 
 	# Normalizing the names to be without 'chr'.
 	# We first check that this normalization would not cause name collisions.
-	if len({s.removeprefix('chr') for s in contig_list}) == len(contig_list) and len(set(CS["chr"])) == len({s.removeprefix('chr') for s in CS["chr"]}):
-		contig_list = [s.removeprefix('chr') for s in contig_list]
+	if len({remove_prefix(s, 'chr') for s in contig_list}) == len(contig_list) and len(set(CS["chr"])) == len({remove_prefix(s, 'chr') for s in CS["chr"]}):
+		contig_list = [remove_prefix(s, 'chr') for s in contig_list]
 		CS["chr"] = CS["chr"].str.removeprefix("chr")
 
 	CS["chr"] = CS["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
