@@ -96,6 +96,14 @@ def load_callstats_file(cs_file,ref_file):
 							"n_altcount": np.uint32}
 					 )
 	contig_list = pd.read_csv(ref_file + '.fai', sep='\t', usecols=[0], names=["contig"])["contig"].tolist()
+
+	# Normalizing the names to be without 'chr'.
+	# We first check that this normalization would not cause name collisions.
+	if len({s.removeprefix('chr') for s in contig_list}) == len(contig_list) and len(set(CS["chr"])) == len({s.removeprefix('chr') for s in CS["chr"]}):
+		contig_list = [s.removeprefix('chr') for s in contig_list]
+		CS["chr"] = CS["chr"].str.removeprefix("chr")
+
+
 	CS["chr"] = CS["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
 	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref=ref_file)
 	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
@@ -145,6 +153,13 @@ if __name__ == "__main__":
           dtype = { "chr" : str, "pos" : np.uint32, "total_reads" : np.uint32, "mapq0_reads" : np.uint32, "t_refcount" : np.uint32, "t_altcount" : np.uint32, "n_refcount" : np.uint32, "n_altcount" : np.uint32 }
 	)
 	contig_list = pd.read_csv(args.r + '.fai', sep='\t', usecols = [0], names=["contig"])["contig"].tolist()
+
+	# Normalizing the names to be without 'chr'.
+	# We first check that this normalization would not cause name collisions.
+	if len({s.removeprefix('chr') for s in contig_list}) == len(contig_list) and len(set(CS["chr"])) == len({s.removeprefix('chr') for s in CS["chr"]}):
+		contig_list = [s.removeprefix('chr') for s in contig_list]
+		CS["chr"] = CS["chr"].str.removeprefix("chr")
+
 	CS["chr"] = CS["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
 	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref = args.r)
 	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
