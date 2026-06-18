@@ -11,6 +11,18 @@ from capy import seq
 
 from hetmodels import run_snp_mixture_model
 
+REF = 'ref'
+ALT = 'alt'
+CHROMOSOME = 'chr'
+POSITION = 'pos'
+TOTAL_READS = 'total_reads'
+MAP_Q0_READS = 'mapq0_reads'
+T_REF_COUNT = 't_refcount'
+T_ALT_COUNT = 't_altcount'
+N_REF_COUNT = 'n_refcount'
+N_ALT_COUNT = 'n_altcount'
+ALLELE = 'allele'
+
 def parse_args():
 	# parse args
 	parser = argparse.ArgumentParser(description = "Get het site coverage from MuTect 1 callstats file")
@@ -83,51 +95,52 @@ def parse_args():
 def hash_altref(DF):
 	return (DF.replace(dict(zip(list("ACGT"), range(0, 4))))@[4, 1]).astype(np.uint8)
 
+
 def load_callstats_file(cs_file,ref_file):
 	# trim callstats (faster to do this on the shell)
 	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(cs_file), shell=True, stdout=subprocess.PIPE)
-
+	assert callstats_trimmed.stdout is not None, 'Failed to trim MuTect output!'
 	# load in callstats
 	print("Loading callstats file ...", file=sys.stderr)
 	CS = pd.read_csv(callstats_trimmed.stdout, sep="\t",
-					 names=["chr", "pos", "ref", "alt", "total_reads", "mapq0_reads", "t_refcount", "t_altcount",
-							"n_refcount", "n_altcount"],
-					 dtype={"chr": str, "pos": np.uint32, "total_reads": np.uint32, "mapq0_reads": np.uint32,
-							"t_refcount": np.uint32, "t_altcount": np.uint32, "n_refcount": np.uint32,
-							"n_altcount": np.uint32}
+					 names=[CHROMOSOME, POSITION, REF, ALT, TOTAL_READS, MAP_Q0_READS, T_REF_COUNT, T_ALT_COUNT,
+							N_REF_COUNT, N_ALT_COUNT],
+					 dtype={CHROMOSOME: str, POSITION: np.uint32, TOTAL_READS: np.uint32, MAP_Q0_READS: np.uint32,
+							T_REF_COUNT: np.uint32, T_ALT_COUNT: np.uint32, N_REF_COUNT: np.uint32,
+							N_ALT_COUNT: np.uint32}
 					 )
 	contig_list = pd.read_csv(ref_file + '.fai', sep='\t', usecols=[0], names=["contig"])["contig"].tolist()
-	CS["chr"] = CS["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
-	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref=ref_file)
-	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
-	CS = CS.drop(columns=["alt", "ref"])
+	CS[CHROMOSOME] = CS[CHROMOSOME].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
+	CS["gpos"] = seq.chrpos2gpos(CS[CHROMOSOME], CS[POSITION], ref=ref_file)
+	CS[ALLELE] = hash_altref(CS.loc[:, [ALT, REF]])
+	CS = CS.drop(columns=[ALT, REF])
 
 	return(CS)
 
 
 def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
 	# 1. excess fraction of MAPQ0 reads at pileup
-	frac_mapq0 = CS["mapq0_reads"]/CS["total_reads"] # NOTE: M1 doesnt report sites with cov=0 if not run in forcecalling mode
+	frac_mapq0 = CS[MAP_Q0_READS]/CS[TOTAL_READS] # NOTE: M1 doesnt report sites with cov=0 if not run in forcecalling mode
 	mapq_pass_idx = frac_mapq0 <= max_frac_mapq0
 	print("{} sites with >{}% of MAPQ0 reads will be dropped.".format(len(CS) - mapq_pass_idx.sum(), max_frac_mapq0*100), file = sys.stderr)
 
 	# 2. excess fraction of tumor reads pre-filtered by MuTect
-	tumor_total_reads = CS["total_reads"] - CS.loc[:, ["n_refcount", "n_altcount"]].sum(1)
-	frac_prefiltered = 1 - CS.loc[:, ["t_refcount", "t_altcount"]].sum(1)/tumor_total_reads
+	tumor_total_reads = CS[TOTAL_READS] - CS.loc[:, [N_REF_COUNT, N_ALT_COUNT]].sum(1)
+	frac_prefiltered = 1 - CS.loc[:, [T_REF_COUNT, T_ALT_COUNT]].sum(1)/tumor_total_reads
 	prefilter_pass_idx = frac_prefiltered <= max_frac_prefiltered
 	print("{} sites with >{}% of prefiltered reads will be dropped.".format(len(CS) - prefilter_pass_idx.sum(), max_frac_prefiltered*100), file = sys.stderr)
 
 	# print(CS.loc[~prefilter_pass_idx].head(50), file = sys.stderr)
 
 	# 3. too few reads overall
-	tum_cov_idx = (CS["t_altcount"] + CS["t_refcount"] >= min_tumor_depth)
+	tum_cov_idx = (CS[T_ALT_COUNT] + CS[T_REF_COUNT] >= min_tumor_depth)
 	print(f"{(~tum_cov_idx).sum()} sites not sufficiently covered in tumor (cutoff {min_tumor_depth}x) will be dropped.", file = sys.stderr)
 	print("{} total sites will be dropped; ".format(len(CS) - (mapq_pass_idx & prefilter_pass_idx & tum_cov_idx).sum()), file = sys.stderr, end = "")
 
 	# perform filtering
 	CS = CS.loc[mapq_pass_idx & prefilter_pass_idx & tum_cov_idx]
 
-	CS = CS.drop(columns = ["mapq0_reads", "total_reads"])
+	CS = CS.drop(columns = [MAP_Q0_READS, TOTAL_READS])
 
 	return(CS)
 
@@ -151,17 +164,17 @@ if __name__ == "__main__":
 	if args.snp_list is not None:
 		print("Loading SNP list ...", file = sys.stderr)
 		H = pd.read_csv(args.snp_list, sep = "\t", comment = "@",
-		  names = ["chr", "pos", "x", "y", "allele"],
-		  dtype = { "chr" : str, "pos" : np.uint32, "x" : np.uint32, "y" : str, "allele" : str },
+		  names = [CHROMOSOME, POSITION, "x", "y", ALLELE],
+		  dtype = { CHROMOSOME : str, POSITION : np.uint32, "x" : np.uint32, "y" : str, ALLELE : str },
 		).drop(columns = ["x", "y"])
-		H["chr"] = H["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
-		H["gpos"] = seq.chrpos2gpos(H["chr"], H["pos"], ref = args.ref_fasta)
-		H["allele"] = hash_altref(H["allele"].str.extract(r"(.)/(.)"))
+		H[CHROMOSOME] = H[CHROMOSOME].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
+		H["gpos"] = seq.chrpos2gpos(H[CHROMOSOME], H[POSITION], ref = args.ref_fasta)
+		H[ALLELE] = hash_altref(H[ALLELE].str.extract(r"(.)/(.)"))
 		print("{} sites loaded.".format(H.shape[0]), file = sys.stderr)
 
 		# merge
 		print("Pulling down SNP site coverage from callstats ...", file = sys.stderr)
-		H = H.merge(CS.drop(columns = ["chr", "pos"]), left_on = ["gpos", "allele"], right_on = ["gpos", "allele"], how = "inner")
+		H = H.merge(CS.drop(columns = [CHROMOSOME, POSITION]), left_on = ["gpos", ALLELE], right_on = ["gpos", ALLELE], how = "inner")
 		print("{} covered SNP sites identified.".format(H.shape[0]), file = sys.stderr)
 	else:
 		H = CS
@@ -169,12 +182,12 @@ if __name__ == "__main__":
 	good_idx = None
 
 	if not args.use_tonly_genotyper:
-		A = H["n_altcount"].values[:, None]
-		B = H["n_refcount"].values[:, None]
+		A = H[N_ALT_COUNT].values[:, None]
+		B = H[N_REF_COUNT].values[:, None]
 
 	else:
-		A = H["t_altcount"].values[:, None]
-		B = H["t_refcount"].values[:, None]
+		A = H[T_ALT_COUNT].values[:, None]
+		B = H[T_REF_COUNT].values[:, None]
 		print('Using Tumor Only Genotyping')
 
 	if args.method == "mixture_model":
@@ -192,19 +205,19 @@ if __name__ == "__main__":
             
 	elif not args.use_tonly_genotyper:
 		# compute which sites in the SNP list are confidently heterozygous in the normal
-		A = H["n_altcount"].values[:, None]
-		B = H["n_refcount"].values[:, None]
+		A = H[N_ALT_COUNT].values[:, None]
+		B = H[N_REF_COUNT].values[:, None]
 		# bdens = \int_{af_lb}^{af_ub} df beta(f | n_alt + 1, n_ref + 1)
 		H["bdens"] = s.beta.cdf(args.af_ub, A + 1, B + 1) - s.beta.cdf(args.af_lb, A + 1, B + 1)
 		# log posterior ratio (alternate method of genotyping; true positive rate is stable WRT coverage)
 		H["log_pod"] = np.abs(s.beta.logsf(0.5, A + 1, B + 1) - s.beta.logcdf(0.5, A + 1, B + 1))
 
 		# compute which sites are confidently homozygous alt. in the normal
-		H["prob_homalt"] = 1 - s.beta.cdf(0.95, H["n_altcount"].values[:, None] + 1, H["n_refcount"].values[:, None] + 1)
+		H["prob_homalt"] = 1 - s.beta.cdf(0.95, H[N_ALT_COUNT].values[:, None] + 1, H[N_REF_COUNT].values[:, None] + 1)
 
 		# save tumor het coverage at good sites to file (GATK GetHetCoverage format)
 		if args.method=='pod':
-			good_idx = ( H["log_pod"] < args.log_pod_threshold ) & ( H["n_altcount"]+H["n_refcount"] >= args.pod_min_depth )
+			good_idx = ( H["log_pod"] < args.log_pod_threshold ) & ( H[N_ALT_COUNT]+H[N_REF_COUNT] >= args.pod_min_depth )
 		else:
 			good_idx = H["bdens"] > args.dens
 
@@ -212,8 +225,8 @@ if __name__ == "__main__":
 	# are confidently homozygous in the normal, we identify sites that are confidently
 	# NOT homozygous in the tumor.
 	else:
-		H["prob_homalt"] = s.beta.sf(0.98, H["t_altcount"].values[:, None] + 1, H["t_refcount"].values[:, None] + 1)
-		H["prob_homref"] = s.beta.cdf(0.02, H["t_altcount"].values[:, None] + 1, H["t_refcount"].values[:, None] + 1)
+		H["prob_homalt"] = s.beta.sf(0.98, H[T_ALT_COUNT].values[:, None] + 1, H[T_REF_COUNT].values[:, None] + 1)
+		H["prob_homref"] = s.beta.cdf(0.02, H[T_ALT_COUNT].values[:, None] + 1, H[T_REF_COUNT].values[:, None] + 1)
 
 		good_idx = (H["prob_homalt"] < 0.01) & (H["prob_homref"] < 0.1)
 
@@ -222,10 +235,10 @@ if __name__ == "__main__":
 
 	# save tumor het coverage to file
 	print("Identified {} high quality het sites in normal.".format(good_idx.sum()), file = sys.stderr)
-	H.loc[good_idx, ["chr", "pos", "t_refcount", "t_altcount"]].rename(columns = { "chr" : "CONTIG", "pos" : "POSITION", "t_refcount" : "REF_COUNT", "t_altcount" : "ALT_COUNT" }).to_csv(args.out_prefix + ".tumor.tsv", sep = "\t", index = False)
+	H.loc[good_idx, [CHROMOSOME, POSITION, T_REF_COUNT, T_ALT_COUNT]].rename(columns = { CHROMOSOME : "CONTIG", POSITION : "POSITION", T_REF_COUNT : "REF_COUNT", T_ALT_COUNT : "ALT_COUNT" }).to_csv(args.out_prefix + ".tumor.tsv", sep = "\t", index = False)
 
 	# save normal het coverage at good sites to file
-	H.loc[good_idx, ["chr", "pos", "n_refcount", "n_altcount"]].rename(columns = { "chr" : "CONTIG", "pos" : "POSITION", "n_refcount" : "REF_COUNT", "n_altcount" : "ALT_COUNT" }).to_csv(args.out_prefix + ".normal.tsv", sep = "\t", index = False)
+	H.loc[good_idx, [CHROMOSOME, POSITION, N_REF_COUNT, N_ALT_COUNT]].rename(columns = { CHROMOSOME : "CONTIG", POSITION : "POSITION", N_REF_COUNT : "REF_COUNT", N_ALT_COUNT : "ALT_COUNT" }).to_csv(args.out_prefix + ".normal.tsv", sep = "\t", index = False)
 
 	# if requested, save genotype file as TSV (23andme style) 
 	if args.genotype:
@@ -233,18 +246,18 @@ if __name__ == "__main__":
 		hom_idx = (H["prob_homalt"] > args.dens) if not args.use_tonly_genotyper else \
 			      (~good_idx & (H["prob_homalt"] > 0.3)) # require minimum coverage of ~17x
 		gen_idx = het_idx | hom_idx
-		G = H.loc[gen_idx, ["chr", "pos", "allele"]]
+		G = H.loc[gen_idx, [CHROMOSOME, POSITION, ALLELE]]
 
 		# add genotype info
-		alt_ref = np.array(["A", "C", "G", "T"])[np.c_[(G["allele"].values & 0xC) >> 2, G["allele"].values & 3]]
+		alt_ref = np.array(["A", "C", "G", "T"])[np.c_[(G[ALLELE].values & 0xC) >> 2, G[ALLELE].values & 3]]
 		alt_ref[hom_idx[gen_idx], 1] = alt_ref[hom_idx[gen_idx], 0] 
 		G["genotype"] = np.char.add(alt_ref[:, -1], alt_ref[:, 0])
 
 		# restore original contig names
 		# XXX: we should probably do this for the coverage files -- how is our
 		#      pipeline OK with not doing this?
-		G["chr"] = G["chr"].apply(lambda x: contig_list[x - 1])
+		G[CHROMOSOME] = G[CHROMOSOME].apply(lambda x: contig_list[x - 1])
 
 		# save
-		G.drop(columns = ["allele"]).to_csv(args.out_prefix + ".genotype.tsv", sep = "\t", index = False)
+		G.drop(columns = [ALLELE]).to_csv(args.out_prefix + ".genotype.tsv", sep = "\t", index = False)
 
