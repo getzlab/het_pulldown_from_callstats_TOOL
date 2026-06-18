@@ -122,7 +122,7 @@ def load_callstats_file(cs_file: str, ref_file: str, is_mutect: bool):
 	return CS
 
 
-def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
+def apply_prefilters(CS: pd.DataFrame, max_frac_mapq0: float, max_frac_prefiltered: pd.DataFrame, min_tumor_depth: pd.DataFrame):
 	mask = np.full(len(CS), True)
 	
 	# 1. excess fraction of MAPQ0 reads at pileup
@@ -165,9 +165,12 @@ if __name__ == "__main__":
 
 	## prefilter poor quality sites
 
-	CS = apply_prefilters(CS,max_frac_mapq0=args.max_frac_mapq0,
-						  max_frac_prefiltered=args.max_frac_prefiltered,
-						  min_tumor_depth=args.min_tumor_depth)
+	CS = apply_prefilters(
+		CS,
+		max_frac_mapq0=args.max_frac_mapq0,
+		max_frac_prefiltered=args.max_frac_prefiltered,
+		min_tumor_depth=args.min_tumor_depth
+	)
 
 	print("{} passing sites.".format(CS.shape[0]), file = sys.stderr)
 
