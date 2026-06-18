@@ -240,6 +240,9 @@ if __name__ == "__main__":
 
 		good_idx = (H["prob_homalt"] < 0.01) & (H["prob_homref"] < 0.1)
 
+	# BCFtools requires H to be sorted.
+	H.sort_values([CHROMOSOME, POSITION])
+
 	# save all possible het sites to file
 	H.to_csv(args.out_prefix + ".all_sites.tsv", sep = "\t", index = False)
 
