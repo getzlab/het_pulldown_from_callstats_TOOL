@@ -133,22 +133,8 @@ def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
 if __name__ == "__main__":
 	args = parse_args()
 
-	CS = load_callstats_file(args.c, args.r)
-
-	# trim callstats (faster to do this on the shell)
-	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(args.c), shell = True, stdout = subprocess.PIPE)
-
-	# load in callstats
-	print("Loading callstats file ...", file = sys.stderr)
-	CS = pd.read_csv(callstats_trimmed.stdout, sep = "\t",
-	  names = ["chr", "pos", "ref", "alt", "total_reads", "mapq0_reads", "t_refcount", "t_altcount", "n_refcount", "n_altcount"],
-          dtype = { "chr" : str, "pos" : np.uint32, "total_reads" : np.uint32, "mapq0_reads" : np.uint32, "t_refcount" : np.uint32, "t_altcount" : np.uint32, "n_refcount" : np.uint32, "n_altcount" : np.uint32 }
-	)
 	contig_list = pd.read_csv(args.r + '.fai', sep='\t', usecols = [0], names=["contig"])["contig"].tolist()
-	CS["chr"] = CS["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
-	CS["gpos"] = seq.chrpos2gpos(CS["chr"], CS["pos"], ref = args.r)
-	CS["allele"] = hash_altref(CS.loc[:, ["alt", "ref"]])
-	CS = CS.drop(columns = ["alt", "ref"])
+	CS = load_callstats_file(args.c, args.r)
 
 	print(f"{len(CS)} sites loaded.", file = sys.stderr)
 
