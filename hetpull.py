@@ -123,26 +123,33 @@ def load_callstats_file(cs_file: str, ref_file: str, is_mutect: bool):
 
 
 def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
+	mask = np.full(len(CS), True)
+	
 	# 1. excess fraction of MAPQ0 reads at pileup
-	frac_mapq0 = CS[MAP_Q0_READS]/CS[TOTAL_READS] # NOTE: M1 doesnt report sites with cov=0 if not run in forcecalling mode
-	mapq_pass_idx = frac_mapq0 <= max_frac_mapq0
-	print("{} sites with >{}% of MAPQ0 reads will be dropped.".format(len(CS) - mapq_pass_idx.sum(), max_frac_mapq0*100), file = sys.stderr)
+	if TOTAL_READS in CS and MAP_Q0_READS in CS:
+		frac_mapq0 = CS[MAP_Q0_READS]/CS[TOTAL_READS] # NOTE: M1 doesnt report sites with cov=0 if not run in forcecalling mode
+		mapq_pass_idx = frac_mapq0 <= max_frac_mapq0
+		mask &= mapq_pass_idx
+		print("{} sites with >{}% of MAPQ0 reads will be dropped.".format(len(CS) - mapq_pass_idx.sum(), max_frac_mapq0*100), file = sys.stderr)
 
 	# 2. excess fraction of tumor reads pre-filtered by MuTect
-	tumor_total_reads = CS[TOTAL_READS] - CS.loc[:, [N_REF_COUNT, N_ALT_COUNT]].sum(1)
-	frac_prefiltered = 1 - CS.loc[:, [T_REF_COUNT, T_ALT_COUNT]].sum(1)/tumor_total_reads
-	prefilter_pass_idx = frac_prefiltered <= max_frac_prefiltered
-	print("{} sites with >{}% of prefiltered reads will be dropped.".format(len(CS) - prefilter_pass_idx.sum(), max_frac_prefiltered*100), file = sys.stderr)
+	if TOTAL_READS in CS and N_REF_COUNT in CS and N_ALT_COUNT in CS and T_REF_COUNT in CS and T_ALT_COUNT in CS:
+		tumor_total_reads = CS[TOTAL_READS] - CS.loc[:, [N_REF_COUNT, N_ALT_COUNT]].sum(1)
+		frac_prefiltered = 1 - CS.loc[:, [T_REF_COUNT, T_ALT_COUNT]].sum(1)/tumor_total_reads
+		prefilter_pass_idx = frac_prefiltered <= max_frac_prefiltered
+		mask &= prefilter_pass_idx
+		print("{} sites with >{}% of prefiltered reads will be dropped.".format(len(CS) - prefilter_pass_idx.sum(), max_frac_prefiltered*100), file = sys.stderr)
 
-	# print(CS.loc[~prefilter_pass_idx].head(50), file = sys.stderr)
 
 	# 3. too few reads overall
-	tum_cov_idx = (CS[T_ALT_COUNT] + CS[T_REF_COUNT] >= min_tumor_depth)
-	print(f"{(~tum_cov_idx).sum()} sites not sufficiently covered in tumor (cutoff {min_tumor_depth}x) will be dropped.", file = sys.stderr)
-	print("{} total sites will be dropped; ".format(len(CS) - (mapq_pass_idx & prefilter_pass_idx & tum_cov_idx).sum()), file = sys.stderr, end = "")
+	if T_REF_COUNT in CS and T_ALT_COUNT in CS:
+		tum_cov_idx = (CS[T_ALT_COUNT] + CS[T_REF_COUNT] >= min_tumor_depth)
+		mask &= tum_cov_idx
+		print(f"{(~tum_cov_idx).sum()} sites not sufficiently covered in tumor (cutoff {min_tumor_depth}x) will be dropped.", file = sys.stderr)
 
+	print("{} total sites will be dropped; ".format(len(CS) - mask.sum()), file = sys.stderr, end = "")
 	# perform filtering
-	CS = CS.loc[mapq_pass_idx & prefilter_pass_idx & tum_cov_idx]
+	CS = CS.loc[mask]
 
 	CS = CS.drop(columns = [MAP_Q0_READS, TOTAL_READS])
 
