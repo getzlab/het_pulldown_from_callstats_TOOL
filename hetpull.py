@@ -11,16 +11,16 @@ from capy import seq
 
 from hetmodels import run_snp_mixture_model
 
-REF = 'ref'
-ALT = 'alt'
-CHROMOSOME = 'chr'
-POSITION = 'pos'
+REF = 'ref_allele'
+ALT = 'alt_allele'
+CHROMOSOME = 'contig'
+POSITION = 'position'
 TOTAL_READS = 'total_reads'
-MAP_Q0_READS = 'mapq0_reads'
-T_REF_COUNT = 't_refcount'
-T_ALT_COUNT = 't_altcount'
-N_REF_COUNT = 'n_refcount'
-N_ALT_COUNT = 'n_altcount'
+MAP_Q0_READS = 'map_Q0_reads'
+T_REF_COUNT = 't_ref_count'
+T_ALT_COUNT = 't_alt_count'
+N_REF_COUNT = 'n_ref_count'
+N_ALT_COUNT = 'n_alt_count'
 ALLELE = 'allele'
 
 def parse_args():
@@ -96,26 +96,30 @@ def hash_altref(DF):
 	return (DF.replace(dict(zip(list("ACGT"), range(0, 4))))@[4, 1]).astype(np.uint8)
 
 
-def load_callstats_file(cs_file,ref_file):
-	# trim callstats (faster to do this on the shell)
-	callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(cs_file), shell=True, stdout=subprocess.PIPE)
-	assert callstats_trimmed.stdout is not None, 'Failed to trim MuTect output!'
-	# load in callstats
+def load_callstats_file(cs_file: str, ref_file: str, is_mutect: bool):
 	print("Loading callstats file ...", file=sys.stderr)
-	CS = pd.read_csv(callstats_trimmed.stdout, sep="\t",
-					 names=[CHROMOSOME, POSITION, REF, ALT, TOTAL_READS, MAP_Q0_READS, T_REF_COUNT, T_ALT_COUNT,
-							N_REF_COUNT, N_ALT_COUNT],
-					 dtype={CHROMOSOME: str, POSITION: np.uint32, TOTAL_READS: np.uint32, MAP_Q0_READS: np.uint32,
-							T_REF_COUNT: np.uint32, T_ALT_COUNT: np.uint32, N_REF_COUNT: np.uint32,
-							N_ALT_COUNT: np.uint32}
-					 )
+	if is_mutect:
+		# trim callstats (faster to do this on the shell)
+		callstats_trimmed = subprocess.Popen("sed '1,2d' {} | cut -f1,2,4,5,16,17,26,27,38,39".format(cs_file), shell=True, stdout=subprocess.PIPE)
+		assert callstats_trimmed.stdout is not None, 'Failed to trim MuTect output!'
+		# load in callstats
+		CS = pd.read_csv(callstats_trimmed.stdout, sep="\t",
+						names=[CHROMOSOME, POSITION, REF, ALT, TOTAL_READS, MAP_Q0_READS, T_REF_COUNT, T_ALT_COUNT,
+								N_REF_COUNT, N_ALT_COUNT],
+						dtype={CHROMOSOME: str, POSITION: np.uint32, TOTAL_READS: np.uint32, MAP_Q0_READS: np.uint32,
+								T_REF_COUNT: np.uint32, T_ALT_COUNT: np.uint32, N_REF_COUNT: np.uint32,
+								N_ALT_COUNT: np.uint32}
+						)
+	else:
+		CS = pd.read_csv(cs_file, sep='\t', comment='#')
+
 	contig_list = pd.read_csv(ref_file + '.fai', sep='\t', usecols=[0], names=["contig"])["contig"].tolist()
 	CS[CHROMOSOME] = CS[CHROMOSOME].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
 	CS["gpos"] = seq.chrpos2gpos(CS[CHROMOSOME], CS[POSITION], ref=ref_file)
 	CS[ALLELE] = hash_altref(CS.loc[:, [ALT, REF]])
 	CS = CS.drop(columns=[ALT, REF])
 
-	return(CS)
+	return CS
 
 
 def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
@@ -148,7 +152,7 @@ if __name__ == "__main__":
 	args = parse_args()
 
 	contig_list = pd.read_csv(args.ref_fasta + '.fai', sep='\t', usecols = [0], names=["contig"])["contig"].tolist()
-	CS = load_callstats_file(args.callstats, args.ref_fasta)
+	CS = load_callstats_file(args.callstats, args.ref_fasta, args.mutect)
 
 	print(f"{len(CS)} sites loaded.", file = sys.stderr)
 
