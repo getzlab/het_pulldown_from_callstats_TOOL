@@ -14,11 +14,12 @@ from hetmodels import run_snp_mixture_model
 def parse_args():
 	# parse args
 	parser = argparse.ArgumentParser(description = "Get het site coverage from MuTect 1 callstats file")
-	parser.add_argument("-c", required = True, help = "Path to callstats file", metavar = "callstats_in")
-	parser.add_argument("-r", required = True, help = "Path to reference FASTA (directory must contain FASTA index)", metavar = "ref_in")
-	parser.add_argument("-o", required = True, help = "Het coverage file prefix ('tumor'/'normal' appended)", metavar = "output_prefix")
-	parser.add_argument("-s", help="Path to GATK-formatted SNP site file", metavar="snplist_in")
-	parser.add_argument("-g", help = "Output genotype file", action = "store_true")
+	parser.add_argument("-c", "--callstats", required = True, help = "Path to callstats file", metavar = "callstats_in")
+	parser.add_argument("-r", "--ref-fasta", required = True, help = "Path to reference FASTA (directory must contain FASTA index)", metavar = "ref_in")
+	parser.add_argument("-o", "--out-prefix", required = True, help = "Het coverage file prefix ('tumor'/'normal' appended)", metavar = "output_prefix")
+	parser.add_argument("-s", "--snp-list", help="Path to GATK-formatted SNP site file", metavar="snplist_in")
+	parser.add_argument("-g", "--genotype", help = "Output genotype file", action = "store_true")
+	parser.add_argument("--mutect", help = "Marks that the input was produced by MuTect", action = "store_true")
 
 	genotyper_parser = parser.add_mutually_exclusive_group(required=False)
 	genotyper_parser.add_argument("-m", dest="method", help = "Selection method to use: mixture_model, pod, beta_density", choices=['mixture_model', 'pod', 'beta_density'], metavar="method")
@@ -66,15 +67,15 @@ def parse_args():
 	if args.use_pod_genotyper or args.use_beta_density:
 		raise ValueError("--use_pod_genotyper and --use_beta_density deprecated, use -m argument")
 
-	if not os.path.exists(args.c):
+	if not os.path.exists(args.callstats):
 		raise FileNotFoundError("Callstats file not found!")
-	if args.s is None:
+	if args.snp_list is None:
 		print("WARNING: without an input SNP site file, all valid het sites will be returned.", file = sys.stderr)
-	elif not os.path.exists(args.s):
+	elif not os.path.exists(args.snp_list):
 		raise FileNotFoundError("SNP site file not found!")
-	if not os.path.exists(args.r):
+	if not os.path.exists(args.ref_fasta):
 		raise FileNotFoundError("Reference fasta file not found!")
-	if not os.path.exists(args.r + '.fai'):
+	if not os.path.exists(args.ref_fasta + '.fai'):
 		raise FileNotFoundError("Reference fasta index file not found! (Must be <reference.fa>.fai)")
 
 	return args
@@ -133,8 +134,8 @@ def apply_prefilters(CS,max_frac_mapq0,max_frac_prefiltered,min_tumor_depth):
 if __name__ == "__main__":
 	args = parse_args()
 
-	contig_list = pd.read_csv(args.r + '.fai', sep='\t', usecols = [0], names=["contig"])["contig"].tolist()
-	CS = load_callstats_file(args.c, args.r)
+	contig_list = pd.read_csv(args.ref_fasta + '.fai', sep='\t', usecols = [0], names=["contig"])["contig"].tolist()
+	CS = load_callstats_file(args.callstats, args.ref_fasta)
 
 	print(f"{len(CS)} sites loaded.", file = sys.stderr)
 
@@ -147,14 +148,14 @@ if __name__ == "__main__":
 	print("{} passing sites.".format(CS.shape[0]), file = sys.stderr)
 
 	# load in SNP list
-	if args.s is not None:
+	if args.snp_list is not None:
 		print("Loading SNP list ...", file = sys.stderr)
-		H = pd.read_csv(args.s, sep = "\t", comment = "@",
+		H = pd.read_csv(args.snp_list, sep = "\t", comment = "@",
 		  names = ["chr", "pos", "x", "y", "allele"],
 		  dtype = { "chr" : str, "pos" : np.uint32, "x" : np.uint32, "y" : str, "allele" : str },
 		).drop(columns = ["x", "y"])
 		H["chr"] = H["chr"].apply(lambda x: contig_list.index(x) + 1).astype(np.uint8)
-		H["gpos"] = seq.chrpos2gpos(H["chr"], H["pos"], ref = args.r)
+		H["gpos"] = seq.chrpos2gpos(H["chr"], H["pos"], ref = args.ref_fasta)
 		H["allele"] = hash_altref(H["allele"].str.extract(r"(.)/(.)"))
 		print("{} sites loaded.".format(H.shape[0]), file = sys.stderr)
 
@@ -217,17 +218,17 @@ if __name__ == "__main__":
 		good_idx = (H["prob_homalt"] < 0.01) & (H["prob_homref"] < 0.1)
 
 	# save all possible het sites to file
-	H.to_csv(args.o + ".all_sites.tsv", sep = "\t", index = False)
+	H.to_csv(args.out_prefix + ".all_sites.tsv", sep = "\t", index = False)
 
 	# save tumor het coverage to file
 	print("Identified {} high quality het sites in normal.".format(good_idx.sum()), file = sys.stderr)
-	H.loc[good_idx, ["chr", "pos", "t_refcount", "t_altcount"]].rename(columns = { "chr" : "CONTIG", "pos" : "POSITION", "t_refcount" : "REF_COUNT", "t_altcount" : "ALT_COUNT" }).to_csv(args.o + ".tumor.tsv", sep = "\t", index = False)
+	H.loc[good_idx, ["chr", "pos", "t_refcount", "t_altcount"]].rename(columns = { "chr" : "CONTIG", "pos" : "POSITION", "t_refcount" : "REF_COUNT", "t_altcount" : "ALT_COUNT" }).to_csv(args.out_prefix + ".tumor.tsv", sep = "\t", index = False)
 
 	# save normal het coverage at good sites to file
-	H.loc[good_idx, ["chr", "pos", "n_refcount", "n_altcount"]].rename(columns = { "chr" : "CONTIG", "pos" : "POSITION", "n_refcount" : "REF_COUNT", "n_altcount" : "ALT_COUNT" }).to_csv(args.o + ".normal.tsv", sep = "\t", index = False)
+	H.loc[good_idx, ["chr", "pos", "n_refcount", "n_altcount"]].rename(columns = { "chr" : "CONTIG", "pos" : "POSITION", "n_refcount" : "REF_COUNT", "n_altcount" : "ALT_COUNT" }).to_csv(args.out_prefix + ".normal.tsv", sep = "\t", index = False)
 
 	# if requested, save genotype file as TSV (23andme style) 
-	if args.g:
+	if args.genotype:
 		het_idx = good_idx
 		hom_idx = (H["prob_homalt"] > args.dens) if not args.use_tonly_genotyper else \
 			      (~good_idx & (H["prob_homalt"] > 0.3)) # require minimum coverage of ~17x
@@ -245,5 +246,5 @@ if __name__ == "__main__":
 		G["chr"] = G["chr"].apply(lambda x: contig_list[x - 1])
 
 		# save
-		G.drop(columns = ["allele"]).to_csv(args.o + ".genotype.tsv", sep = "\t", index = False)
+		G.drop(columns = ["allele"]).to_csv(args.out_prefix + ".genotype.tsv", sep = "\t", index = False)
 
