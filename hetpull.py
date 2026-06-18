@@ -34,7 +34,7 @@ def parse_args():
 	parser.add_argument("--mutect", help = "Marks that the input was produced by MuTect", action = "store_true")
 
 	genotyper_parser = parser.add_mutually_exclusive_group(required=False)
-	genotyper_parser.add_argument("-m", dest="method", help = "Selection method to use: mixture_model, pod, beta_density", choices=['mixture_model', 'pod', 'beta_density'], metavar="method")
+	genotyper_parser.add_argument("-m", "--method", help = "Selection method to use: mixture_model, pod, beta_density", choices=['mixture_model', 'pod', 'beta_density'], metavar="method")
 	genotyper_parser.add_argument("--use_pod_genotyper", dest="use_pod_genotyper",help = "(Deprecated use --method argument) Use posterior odds method for genotyping", action = "store_true")
 	genotyper_parser.add_argument("--use_beta_density", dest="use_pod_genotyper", help = "(Deprecated use --method argument) Use beta distribution density for genotyping", action = "store_false")
 	
@@ -203,11 +203,7 @@ if __name__ == "__main__":
 		A = H[T_ALT_COUNT].values[:, None]
 		B = H[T_REF_COUNT].values[:, None]
 		print('Using Tumor Only Genotyping')
-
 	if args.method == "mixture_model":
-		outs = run_snp_mixture_model(B,A)
-
-
 		if args.use_tonly_genotyper:
 			outs = run_snp_mixture_model(B,A)
 			H[outs['snp_prob'].columns] = outs['snp_prob'].values
